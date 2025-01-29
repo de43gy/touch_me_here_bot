@@ -28,3 +28,7 @@ async def create_tables():
             """
         )
         await db.commit()
+
+async def add_user(user_id, username):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("INSERT OR IGNORE INTO users (id, username) VALUES (?, ?)", (user_id, username))
