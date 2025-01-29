@@ -14,17 +14,19 @@ class GiveMassage(StatesGroup):
 
 async def request_day(message: types.Message):
     markup = types.InlineKeyboardMarkup()
-    days = ["Первый день", "Второй день", "Третий день"]
+    days = ["День 1", "День 2", "День 3"]
     for day in days:
         markup.add(types.InlineKeyboardButton(day, callback_data=f"give_day:{day}"))
-    await message.answer("Пожалуйста, выбери день, когда ты хочешь сделать массаж:", reply_markup=markup)
+    await message.answer("Пожалуйста, выберите день, когда вы хотите делать массаж:", reply_markup=markup)
     await GiveMassage.day.set()
 
+async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
+    day = callback_query.data.split(":")[1]
+    await state.update_data(day=day)
+
     markup = types.InlineKeyboardMarkup()
-    # Пример времени, замените на актуальное время и проверяйте доступность слотов
     times = ["12:00", "12:30", "13:00", "13:30"]
     for time in times:
-        # Проверяем доступность слота
         if await is_slot_available(day, time):
           markup.add(types.InlineKeyboardButton(time, callback_data=f"give_time:{time}"))
         else:
@@ -52,8 +54,7 @@ async def process_comment(message: types.Message, state: FSMContext):
     await message.answer(f"Вы записаны на дарение массажа:\nДень: {day}\nВремя: {time}\nКомментарий: {comment}", reply_markup=main_menu)
     await state.finish()
 
-    # Отложенная задача для напоминания
-    reminder_time = datetime.strptime(f"{day} {time}", "%d %B %H:%M") - timedelta(minutes=30) # предполагается что формат "День 1 12:00", если нет, то замените на "День X %H:%M", где X это номер дня
+    reminder_time = datetime.strptime(f"{day} {time}", "%d %B %H:%M") - timedelta(minutes=30)
     delay = (reminder_time - datetime.now()).total_seconds()
 
     if delay > 0:
@@ -67,3 +68,4 @@ async def schedule_reminder(user_id: int, username: str, day: str, time: str, ro
       text = f"Я помню, что через 30 минут делаю массаж в «Трогай тут (корпус , этаж)» и приду его делать 👌🏻"
     elif role == "receiver":
       text = f"Я помню, что через 30 минут получаю массаж в «Трогай тут (корпус , этаж)» и приду его получать 👌🏻"
+    await bot.send_message(user_id, text, reply_markup=reminder_menu)
