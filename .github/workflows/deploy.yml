@@ -24,7 +24,7 @@ jobs:
                     pip install -r requirements.txt
             - name: create .env file
               run: |
-                    echo "TELEGRAM_BOT_TOKEN=${{ secrets.TOUCH_ME_HERE_BOT_TOKEN }}" >> .env
+                    echo "BOT_TOKEN=${{ secrets.TOUCH_ME_HERE_BOT_TOKEN }}" >> .env
             
             - name: Deploy to Server
               uses: appleboy/ssh-action@v1.0.3
