@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 router = Router()
 
-@router.message(commands=["start"])
+@router.message(F.command("start"))
 async def cmd_start(message: types.Message):
     try:
         await add_user(message.from_user.id, message.from_user.username)
