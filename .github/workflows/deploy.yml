@@ -35,5 +35,7 @@ jobs:
             python3 -m venv venv
             source venv/bin/activate
             pip install -r requirements.txt
+            echo "BOT_TOKEN=${{ secrets.TOUCH_ME_HERE_BOT_TOKEN}}" > .env
+            echo "ADMIN_ID=${{ secrets.TOUCH_ME_HERE_BOT_ADMIN_ID}}" >> .env
             deactivate
             sudo systemctl restart touch_me_here_bot
