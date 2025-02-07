@@ -19,7 +19,7 @@ class Cancel(StatesGroup):
 router = Router()
 
 @router.message(F.text == "Мои записи")
-async def show_user_slots(message: types.Message):
+async def show_user_slots(message: types.Message, state: FSMContext):
     user_slots = await get_user_slots(message.from_user.id)
     if not user_slots:
         await message.answer("У вас нет активных записей.", reply_markup=main_menu)
@@ -28,19 +28,37 @@ async def show_user_slots(message: types.Message):
     markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     for slot in user_slots:
         slot_info = await format_slot_info(slot)
-        slot_datetime = datetime.strptime(f"{slot['day']} {slot['time']}", "%d %B %H:%M")
-        if slot_datetime > datetime.now():
-            button = types.InlineKeyboardButton(text=slot_info, callback_data=f"cancel:{slot['id']}")
-            markup.inline_keyboard.append([button])
-        else:
-            button = types.InlineKeyboardButton(text=f"{slot_info} (время слота прошло)", callback_data="ignore")
-            markup.inline_keyboard.append([button])
+        
+        # Преобразуем номер дня в формат "01", "02" и т.д.
+        day_number = slot['day'].split()[1].zfill(2)
+        
+        # Форматируем время
+        time_str = slot['time']
+        if len(time_str) == 2:  # Если время в формате "12", добавляем ":00"
+            time_str = f"{time_str}:00"
+            
+        try:
+            slot_datetime = datetime.strptime(f"{day_number} {time_str}", "%d %H:%M")
+            
+            if slot_datetime > datetime.now():
+                button = types.InlineKeyboardButton(text=slot_info, callback_data=f"cancel:{slot['id']}")
+                markup.inline_keyboard.append([button])
+            else:
+                button = types.InlineKeyboardButton(text=f"{slot_info} (время слота прошло)", callback_data="ignore")
+                markup.inline_keyboard.append([button])
+        except ValueError as e:
+            logger.error(f"Ошибка при парсинге даты/времени: {e}")
+            continue
+
+    if not markup.inline_keyboard:
+        await message.answer("У вас нет активных записей.", reply_markup=main_menu)
+        return
 
     await message.answer("Выберите запись для отмены:", reply_markup=markup)
-    await Cancel.confirm_cancellation.set()
+    await state.set_state(Cancel.confirm_cancellation)
 
 @router.callback_query(Cancel.confirm_cancellation, F.data.startswith("cancel:"))
-async def cancel_slot(callback_query: types.CallbackQuery, state: FSMContext):
+async def handle_cancel_slot(callback_query: types.CallbackQuery, state: FSMContext):
     slot_id = int(callback_query.data.split(":")[1])
     slot = await get_slot_by_id(slot_id)
 
@@ -50,7 +68,10 @@ async def cancel_slot(callback_query: types.CallbackQuery, state: FSMContext):
         return
 
     if not await is_cancellation_allowed(slot):
-        await callback_query.message.edit_text("Извините, отмена записи возможна не позднее, чем за 30 минут до начала.", reply_markup=main_menu)
+        await callback_query.message.edit_text(
+            "Извините, отмена записи возможна не позднее, чем за 30 минут до начала.",
+            reply_markup=main_menu
+        )
         await state.clear()
         return
 
@@ -61,4 +82,20 @@ async def cancel_slot(callback_query: types.CallbackQuery, state: FSMContext):
         canceled_by = 'receiver'
         other_user_id = slot['giver_id']
 
-    await cancel
+    await cancel_slot(slot_id, canceled_by)
+    await callback_query.message.edit_text("Запись успешно отменена.", reply_markup=main_menu)
+    
+    if other_user_id:
+        try:
+            await bot.send_message(
+                other_user_id,
+                f"Ваша запись на массаж {slot['day']} в {slot['time']} была отменена {'массажистом' if canceled_by == 'giver' else 'получателем'}."
+            )
+        except Exception as e:
+            logger.error(f"Ошибка при отправке уведомления об отмене: {e}")
+
+    await state.clear()
+
+@router.callback_query(Cancel.confirm_cancellation, F.data == "ignore")
+async def handle_ignore(callback_query: types.CallbackQuery):
+    await callback_query.answer("Это время уже прошло.")

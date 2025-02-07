@@ -69,17 +69,36 @@ async def process_comment(message: types.Message, state: FSMContext):
     day = data.get("day")
     time = data.get("time")
 
-    await add_slot(message.from_user.id, day, time, comment)
-    await message.answer(f"Вы записаны на дарение массажа:\nДень: {day}\nВремя: {time}\nКомментарий: {comment}", reply_markup=main_menu)
-    await state.clear()
+    try:
+        await add_slot(message.from_user.id, day, time, comment)
+        await message.answer(
+            f"Вы записаны на дарение массажа:\nДень: {day}\nВремя: {time}\nКомментарий: {comment}", 
+            reply_markup=main_menu
+        )
+        
+        day_number = day.split()[1].zfill(2)
+        
+        reminder_datetime = datetime.strptime(f"{day_number} {time}", "%d %H:%M")
+        reminder_time = reminder_datetime - timedelta(minutes=30)
+        delay = (reminder_time - datetime.now()).total_seconds()
 
-    reminder_time = datetime.strptime(f"{day} {time}", "День %d %H:%M") - timedelta(minutes=30)
-    delay = (reminder_time - datetime.now()).total_seconds()
-
-    if delay > 0:
-        asyncio.create_task(schedule_reminder(message.from_user.id, message.from_user.username, day, time, "giver", delay))
-    else:
-        logger.warning(f"Пропущено напоминание для пользователя {message.from_user.username} (ID: {message.from_user.id}), время: {day} {time} ({reminder_time})")
+        if delay > 0:
+            asyncio.create_task(
+                schedule_reminder(message.from_user.id, message.from_user.username, day, time, "giver", delay)
+            )
+        else:
+            logger.warning(
+                f"Пропущено напоминание для пользователя {message.from_user.username} "
+                f"(ID: {message.from_user.id}), время: {day} {time} ({reminder_time})"
+            )
+    except Exception as e:
+        logger.error(f"Ошибка при создании слота: {e}")
+        await message.answer(
+            "Произошла ошибка при создании слота. Пожалуйста, попробуйте еще раз.",
+            reply_markup=main_menu
+        )
+    finally:
+        await state.clear()
 
 async def schedule_reminder(user_id: int, username: str, day: str, time: str, role: str, delay: int):
     await asyncio.sleep(delay)
