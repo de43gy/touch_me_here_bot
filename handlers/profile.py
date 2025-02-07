@@ -1,88 +1,51 @@
-from aiogram import types, Router, F
+from aiogram import types
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
 from keyboards import main_menu
-from database import cancel_slot, get_slot_by_id, get_user_slots
-from utils import is_cancellation_allowed
-from datetime import datetime, timedelta
-import logging
+from database import get_user_slots, get_slot_by_id
+from utils import format_slot_info
 
-from aiogram import Bot
-from config import BOT_TOKEN
+class Profile(StatesGroup):
+    viewing_slot = State()
 
-logger = logging.getLogger(__name__)
-
-bot = Bot(token=BOT_TOKEN)
-
-router = Router()
-
-@router.callback_query(F.data == "confirm")
-async def confirm_reminder(callback_query: types.CallbackQuery):
-    await callback_query.message.edit_text("Спасибо за подтверждение!")
-    await callback_query.answer()
-
-@router.callback_query(F.data == "cancel_reminder")
-async def cancel_from_reminder(callback_query: types.CallbackQuery):
-    message_text = callback_query.message.text
-
-    try:
-        index = message_text.find("через 30 минут")
-        if index == -1:
-            raise ValueError("Не найдена фраза 'через 30 минут'")
-
-        substring = message_text[index + len("через 30 минут"):].strip()
-
-        parts = substring.split()
-        if "делаю" in message_text:
-            day = " ".join(parts[4:6])
-            time = parts[7]
-        elif "получаю" in message_text:
-            day = " ".join(parts[4:6])
-            time = parts[7]
-        else:
-            raise ValueError("Не удалось определить тип сообщения (делаю/получаю)")
-
-    except (ValueError, IndexError) as e:
-        logger.error(f"Ошибка при разборе времени из напоминания: {e}, текст: {message_text}")
-        await callback_query.answer("Не удалось разобрать время из напоминания", show_alert=True)
+async def show_profile(message: types.Message):
+    user_slots = await get_user_slots(message.from_user.id)
+    if not user_slots:
+        await message.answer("У вас нет активных записей.", reply_markup=main_menu)
         return
-    
-    logger.info(f"Извлечено из напоминания: день='{day}', время='{time}'")
 
-    user_slots = await get_user_slots(callback_query.from_user.id)
-    target_slot = None
+    markup = types.InlineKeyboardMarkup()
     for slot in user_slots:
-        if slot['day'] == day and slot['time'] == time:
-            target_slot = slot
-            break
+        slot_info = await format_slot_info(slot)
+        slot_datetime = datetime.strptime(f"{slot['day']} {slot['time']}", "%d %B %H:%M")
+        if slot_datetime > datetime.now():
+            markup.add(types.InlineKeyboardButton(slot_info, callback_data=f"view_slot:{slot['id']}"))
+        else:
+            markup.add(types.InlineKeyboardButton(f"{slot_info} (время слота прошло)", callback_data="ignore"))
 
-    if target_slot is None:
-        await callback_query.answer("Не удалось найти слот по данным из напоминания", show_alert=True)
+    await message.answer("Ваши записи:", reply_markup=markup)
+    await Profile.viewing_slot.set()
+
+async def read_receiver_comment(callback_query: types.CallbackQuery, state: FSMContext):
+    if callback_query.data == "ignore":
+        await callback_query.answer("Это время уже прошло.")
         return
 
-    slot_id = target_slot['id']
+    slot_id = int(callback_query.data.split(":")[1])
     slot = await get_slot_by_id(slot_id)
 
     if not slot:
         await callback_query.answer("Извините, слот был удален.")
+        await state.finish()
         return
 
-    if not await is_cancellation_allowed(slot):
-        await callback_query.message.edit_text("Извините, отмена записи возможна не позднее, чем за 30 минут до начала.", reply_markup=main_menu)
+    if callback_query.from_user.id != slot['giver_id']:
+        await callback_query.answer("Вы не можете просматривать комментарий получателя в этом слоте.")
         return
 
-    if callback_query.from_user.id == slot['giver_id']:
-        canceled_by = 'giver'
-        other_user_id = slot['receiver_id']
+    if slot['receiver_comment']:
+        await callback_query.answer(f"Комментарий получателя: {slot['receiver_comment']}", show_alert=True)
     else:
-        canceled_by = 'receiver'
-        other_user_id = slot['giver_id']
+        await callback_query.answer("Получатель не оставил комментария.", show_alert=True)
 
-    await cancel_slot(slot_id, canceled_by)
-
-    if other_user_id:
-        if canceled_by == 'giver':
-            await bot.send_message(other_user_id, "Простите, ваш массажист не сможет сделать вам массаж.")
-        else:
-            await bot.send_message(other_user_id, "Простите, ваш массажируемый не сможет прийти на массаж.")
-
-    await callback_query.message.edit_text("Запись успешно отменена.", reply_markup=main_menu)
-    await callback_query.answer()
+    await state.finish()

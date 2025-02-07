@@ -30,10 +30,10 @@ async def show_user_slots(message: types.Message):
         slot_info = await format_slot_info(slot)
         slot_datetime = datetime.strptime(f"{slot['day']} {slot['time']}", "%d %B %H:%M")
         if slot_datetime > datetime.now():
-            button = types.InlineKeyboardButton(F.text == slot_info, callback_data=f"cancel:{slot['id']}")
+            button = types.InlineKeyboardButton(text=slot_info, callback_data=f"cancel:{slot['id']}")
             markup.inline_keyboard.append([button])
         else:
-            button = types.InlineKeyboardButton(F.text == f"{slot_info} (время слота прошло)", callback_data="ignore")
+            button = types.InlineKeyboardButton(text=f"{slot_info} (время слота прошло)", callback_data="ignore")
             markup.inline_keyboard.append([button])
 
     await message.answer("Выберите запись для отмены:", reply_markup=markup)
@@ -61,17 +61,4 @@ async def cancel_slot(callback_query: types.CallbackQuery, state: FSMContext):
         canceled_by = 'receiver'
         other_user_id = slot['giver_id']
 
-    await cancel_slot(slot_id, canceled_by)
-
-    if other_user_id:
-        if canceled_by == 'giver':
-            await bot.send_message(other_user_id, "Простите, ваш массажист не сможет сделать вам массаж.")
-        else:
-            await bot.send_message(other_user_id, "Простите, ваш массажируемый не сможет прийти на массаж.")
-
-    await callback_query.message.edit_text("Запись успешно отменена.", reply_markup=main_menu)
-    await state.clear()
-
-@router.callback_query(Cancel.confirm_cancellation, F.data == "ignore")
-async def ignore_cancel(callback_query: types.CallbackQuery):
-    await callback_query.answer("Это время уже прошло.")
+    await cancel
