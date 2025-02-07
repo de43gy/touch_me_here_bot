@@ -1,10 +1,20 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
-main_menu = ReplyKeyboardMarkup(resize_keyboard=True)
-main_menu.add(KeyboardButton("хочу сделать массаж"))
-main_menu.add(KeyboardButton("хочу получить массаж"))
-main_menu.add(KeyboardButton("Мои записи"))
+main_menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="Я хочу сделать массаж")],
+        [KeyboardButton(text="Я хочу получить массаж")],
+        [KeyboardButton(text="Мои записи")],
+    ],
+    resize_keyboard=True
+)
 
-reminder_menu = InlineKeyboardMarkup()
-reminder_menu.add(InlineKeyboardButton("я помню и приду 👌", callback_data="confirm"))
-reminder_menu.add(InlineKeybardButton("я передумал и не приду 🙅‍♂️", callback_data="cancel_reminder"))
+reminder_menu = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="Я помню и приду 👌", callback_data="confirm")],
+        [InlineKeyboardButton(text="Я передумал и не приду", callback_data="cancel_reminder")],
+    ]
+)
+
+
+
