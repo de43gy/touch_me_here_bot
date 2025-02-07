@@ -40,4 +40,4 @@ jobs:
             source venv/bin/activate
             pip install -r requirements.txt
             deactivate
-            sudo systemctl restart touch-me-here-telegram-bot
+            sudo /usr/sbin/service touch-me-here-telegram-bot restart
