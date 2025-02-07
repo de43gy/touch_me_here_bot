@@ -18,7 +18,7 @@ class Cancel(StatesGroup):
 
 router = Router()
 
-@router.message(text="Мои записи")
+@router.message(F.text == "Мои записи")
 async def show_user_slots(message: types.Message):
     user_slots = await get_user_slots(message.from_user.id)
     if not user_slots:
@@ -30,10 +30,10 @@ async def show_user_slots(message: types.Message):
         slot_info = await format_slot_info(slot)
         slot_datetime = datetime.strptime(f"{slot['day']} {slot['time']}", "%d %B %H:%M")
         if slot_datetime > datetime.now():
-            button = types.InlineKeyboardButton(text=slot_info, callback_data=f"cancel:{slot['id']}")
+            button = types.InlineKeyboardButton(F.text == slot_info, callback_data=f"cancel:{slot['id']}")
             markup.inline_keyboard.append([button])
         else:
-            button = types.InlineKeyboardButton(text=f"{slot_info} (время слота прошло)", callback_data="ignore")
+            button = types.InlineKeyboardButton(F.text == f"{slot_info} (время слота прошло)", callback_data="ignore")
             markup.inline_keyboard.append([button])
 
     await message.answer("Выберите запись для отмены:", reply_markup=markup)

@@ -1,4 +1,4 @@
-from aiogram import types, Router
+from aiogram import types, Router, F
 from keyboards import main_menu
 import logging
 from database import add_user

@@ -23,7 +23,7 @@ class ReceiveMassage(StatesGroup):
 
 router = Router()
 
-@router.message(text="Я хочу получить массаж")
+@router.message(F.text == "Я хочу получить массаж")
 async def show_available_slots(message: types.Message):
     slots = await get_available_slots()
     if not slots:
@@ -34,7 +34,7 @@ async def show_available_slots(message: types.Message):
     days = sorted(list(set([slot['day'] for slot in slots])))
 
     for day in days:
-        button = types.InlineKeyboardButton(text=day, callback_data=f"receive_day:{day}")
+        button = types.InlineKeyboardButton(F.text == day, callback_data=f"receive_day:{day}")
         markup.inline_keyboard.append([button])
     await message.answer("Выберите день:", reply_markup=markup)
     await ReceiveMassage.day.set()
@@ -50,7 +50,7 @@ async def process_day_selection(callback_query: types.CallbackQuery, state: FSMC
     markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     for slot in day_slots:
         slot_info = await format_slot_info(slot)
-        button = types.InlineKeyboardButton(text=slot_info, callback_data=f"receive_time:{slot['id']}")
+        button = types.InlineKeyboardButton(F.text == slot_info, callback_data=f"receive_time:{slot['id']}")
         markup.inline_keyboard.append([button])
 
     await callback_query.message.edit_text(f"Доступные слоты на {day}:", reply_markup=markup)

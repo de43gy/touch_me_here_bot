@@ -2,17 +2,17 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="Я хочу сделать массаж")],
-        [KeyboardButton(text="Я хочу получить массаж")],
-        [KeyboardButton(text="Мои записи")],
+        [KeyboardButton(F.text=="Я хочу сделать массаж")],
+        [KeyboardButton(F.text=="Я хочу получить массаж")],
+        [KeyboardButton(F.text=="Мои записи")],
     ],
     resize_keyboard=True
 )
 
 reminder_menu = InlineKeyboardMarkup(
     inline_keyboard=[
-        [InlineKeyboardButton(text="Я помню и приду 👌", callback_data="confirm")],
-        [InlineKeyboardButton(text="Я передумал и не приду", callback_data="cancel_reminder")],
+        [InlineKeyboardButton(F.text=="Я помню и приду 👌", callback_data="confirm")],
+        [InlineKeyboardButton(F.text=="Я передумал и не приду", callback_data="cancel_reminder")],
     ]
 )
 

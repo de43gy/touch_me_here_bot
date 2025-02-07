@@ -23,12 +23,12 @@ class GiveMassage(StatesGroup):
 
 router = Router()
 
-@router.message(text="Я хочу сделать массаж")
+@router.message(F.text == "Я хочу сделать массаж")
 async def request_day(message: types.Message):
     markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     days = ["День 1", "День 2", "День 3"]
     for day in days:
-        button = types.InlineKeyboardButton(text=day, callback_data=f"give_day:{day}")
+        button = types.InlineKeyboardButton(F.text == day, callback_data=f"give_day:{day}")
         markup.inline_keyboard.append([button])
 
     await message.answer("Пожалуйста, выберите день, когда вы хотите делать массаж:", reply_markup=markup)
@@ -43,10 +43,10 @@ async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
     times = ["12:00", "12:30", "13:00", "13:30"]
     for time in times:
         if await is_slot_available(day, time):
-            button = types.InlineKeyboardButton(text=time, callback_data=f"give_time:{time}")
+            button = types.InlineKeyboardButton(F.text == time, callback_data=f"give_time:{time}")
             markup.inline_keyboard.append([button])
         else:
-            button = types.InlineKeyboardButton(text=f"{time} (занято)", callback_data="ignore")
+            button = types.InlineKeyboardButton(F.text == f"{time} (занято)", callback_data="ignore")
             markup.inline_keyboard.append([button])
 
     await callback_query.message.edit_text(f"Вы выбрали день: {day}. Теперь выберите время:", reply_markup=markup)
