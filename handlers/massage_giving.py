@@ -33,27 +33,11 @@ async def request_day(message: types.Message, state: FSMContext):
     await message.answer("Пожалуйста, выберите день, когда вы хотите делать массаж:", reply_markup=markup)
     await state.set_state(GiveMassage.day)
 
-@router.callback_query(GiveMassage.day, F.data.startswith("give_day:"))
-async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
-    day = callback_query.data.split(":")[1]
-    await state.update_data(day=day)
-
-    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
-    times = ["12:00", "12:30", "13:00", "13:30"]
-    for time in times:
-        if await is_slot_available(day, time):
-            button = types.InlineKeyboardButton(text=time, callback_data=f"give_time:{time}")
-            markup.inline_keyboard.append([button])
-        else:
-            button = types.InlineKeyboardButton(text=f"{time} (занято)", callback_data="ignore")
-            markup.inline_keyboard.append([button])
-
-    await callback_query.message.edit_text(f"Вы выбрали день: {day}. Теперь выберите время:", reply_markup=markup)
-    await state.set_state(GiveMassage.time)
-
 @router.callback_query(GiveMassage.time, F.data.startswith("give_time:"))
 async def process_time(callback_query: types.CallbackQuery, state: FSMContext):
     time = callback_query.data.split(":")[1]
+    if ':' not in time:
+        time = f"{time}:00"
     await state.update_data(time=time)
     await callback_query.message.edit_text("Напишите комментарий к своему предложению массажа (необязательно):")
     await state.set_state(GiveMassage.comment)
@@ -64,33 +48,44 @@ async def process_time_ignore(callback_query: types.CallbackQuery):
 
 @router.message(GiveMassage.comment)
 async def process_comment(message: types.Message, state: FSMContext):
-    comment = message.text if message.text else ""
-    data = await state.get_data()
-    day = data.get("day")
-    time = data.get("time")
-
     try:
+        comment = message.text if message.text else ""
+        data = await state.get_data()
+        day = data.get("day")
+        time = data.get("time")
+        
         await add_slot(message.from_user.id, day, time, comment)
         await message.answer(
             f"Вы записаны на дарение массажа:\nДень: {day}\nВремя: {time}\nКомментарий: {comment}", 
             reply_markup=main_menu
         )
         
-        day_number = day.split()[1].zfill(2)
-        
-        reminder_datetime = datetime.strptime(f"{day_number} {time}", "%d %H:%M")
-        reminder_time = reminder_datetime - timedelta(minutes=30)
-        delay = (reminder_time - datetime.now()).total_seconds()
+        try:
+            # Используем текущую дату и заменяем только часы и минуты
+            now = datetime.now()
+            time_parts = time.split(':')
+            reminder_datetime = now.replace(
+                hour=int(time_parts[0]),
+                minute=int(time_parts[1]),
+                second=0,
+                microsecond=0
+            )
+            
+            reminder_time = reminder_datetime - timedelta(minutes=30)
+            delay = (reminder_time - datetime.now()).total_seconds()
 
-        if delay > 0:
-            asyncio.create_task(
-                schedule_reminder(message.from_user.id, message.from_user.username, day, time, "giver", delay)
-            )
-        else:
-            logger.warning(
-                f"Пропущено напоминание для пользователя {message.from_user.username} "
-                f"(ID: {message.from_user.id}), время: {day} {time} ({reminder_time})"
-            )
+            if delay > 0:
+                asyncio.create_task(
+                    schedule_reminder(message.from_user.id, message.from_user.username, day, time, "giver", delay)
+                )
+            else:
+                logger.warning(
+                    f"Пропущено напоминание для пользователя {message.from_user.username} "
+                    f"(ID: {message.from_user.id}), время: {day} {time}"
+                )
+        except Exception as e:
+            logger.error(f"Ошибка при создании напоминания: {e}")
+            
     except Exception as e:
         logger.error(f"Ошибка при создании слота: {e}")
         await message.answer(
