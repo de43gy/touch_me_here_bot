@@ -33,18 +33,38 @@ async def request_day(message: types.Message, state: FSMContext):
     await message.answer("Пожалуйста, выберите день, когда вы хотите делать массаж:", reply_markup=markup)
     await state.set_state(GiveMassage.day)
 
-@router.callback_query(GiveMassage.time, F.data.startswith("give_time:"))
+@router.callback_query(GiveMassage.day)
+async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
+    day = callback_query.data.split(":")[1]
+    await state.update_data(day=day)
+
+    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
+    times = ["12:00", "12:30", "13:00", "13:30"]
+    for time in times:
+        if await is_slot_available(day, time):
+            button = types.InlineKeyboardButton(text=time, callback_data=f"give_time:{time}")
+            markup.inline_keyboard.append([button])
+        else:
+            button = types.InlineKeyboardButton(text=f"{time} (занято)", callback_data="ignore")
+            markup.inline_keyboard.append([button])
+
+    await callback_query.message.edit_text(f"Вы выбрали день: {day}. Теперь выберите время:", reply_markup=markup)
+    await state.set_state(GiveMassage.time)
+    await callback_query.answer()
+
+@router.callback_query(GiveMassage.time)
 async def process_time(callback_query: types.CallbackQuery, state: FSMContext):
+    if callback_query.data == "ignore":
+        await callback_query.answer("Это время уже занято.")
+        return
+        
     time = callback_query.data.split(":")[1]
     if ':' not in time:
         time = f"{time}:00"
     await state.update_data(time=time)
     await callback_query.message.edit_text("Напишите комментарий к своему предложению массажа (необязательно):")
     await state.set_state(GiveMassage.comment)
-
-@router.callback_query(GiveMassage.time, F.data == "ignore")
-async def process_time_ignore(callback_query: types.CallbackQuery):
-    await callback_query.answer("Это время уже занято.")
+    await callback_query.answer()
 
 @router.message(GiveMassage.comment)
 async def process_comment(message: types.Message, state: FSMContext):
@@ -61,7 +81,6 @@ async def process_comment(message: types.Message, state: FSMContext):
         )
         
         try:
-            # Используем текущую дату и заменяем только часы и минуты
             now = datetime.now()
             time_parts = time.split(':')
             reminder_datetime = now.replace(
