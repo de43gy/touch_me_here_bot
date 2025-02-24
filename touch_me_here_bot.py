@@ -6,7 +6,7 @@ import logging
 
 from config import BOT_TOKEN, ADMIN_ID
 from database import create_tables
-from handlers import start, massage_giving, massage_receiving, cancellation, profile
+from handlers import start, massage_giving, massage_receiving, cancellation, profile, admin
 from utils import send_notification_to_admin
 
 logging.basicConfig(
@@ -25,6 +25,7 @@ async def main():
     dp.include_router(massage_receiving.router)
     dp.include_router(cancellation.router)
     dp.include_router(profile.router)
+    dp.include_router(admin.router)
 
     logger.info("Starting bot...")
     try:
@@ -36,6 +37,8 @@ async def main():
         await send_notification_to_admin(bot, f"Ошибка при запуске бота: {e}")
     finally:
         await bot.session.close()
+        logger.info("Бот остановлен.")
+        await send_notification_to_admin(bot, "Бот остановлен.")
 
 if __name__ == "__main__":
     asyncio.run(main())
