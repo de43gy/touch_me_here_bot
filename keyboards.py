@@ -5,6 +5,7 @@ main_menu = ReplyKeyboardMarkup(
         [KeyboardButton(text="Я хочу сделать массаж")],
         [KeyboardButton(text="Я хочу получить массаж")],
         [KeyboardButton(text="Мои записи")],
+        [KeyboardButton(text="Расписание кемпа «Трогай тут»")],
     ],
     resize_keyboard=True
 )

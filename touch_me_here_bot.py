@@ -6,7 +6,7 @@ import logging
 
 from config import BOT_TOKEN, ADMIN_ID
 from database import create_tables
-from handlers import start, massage_giving, massage_receiving, cancellation, profile, admin
+from handlers import start, massage_giving, massage_receiving, cancellation, profile, admin, schedule
 from utils import send_notification_to_admin
 
 logging.basicConfig(
@@ -26,6 +26,7 @@ async def main():
     dp.include_router(cancellation.router)
     dp.include_router(profile.router)
     dp.include_router(admin.router)
+    dp.include_router(schedule.router)
 
     logger.info("Starting bot...")
     try:
