@@ -3,11 +3,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.filters.state import State, StatesGroup
 from keyboards import main_menu, reminder_menu
 from database import add_slot
-from utils import is_slot_available, get_current_moscow_time, parse_slot_datetime
+from utils import is_slot_available, get_current_moscow_time, parse_slot_datetime, normalize_time_format
 from datetime import datetime, timedelta
 import asyncio
 import logging
 import pytz
+import re
 
 from aiogram import Bot
 from config import BOT_TOKEN
@@ -36,16 +37,53 @@ async def back_to_main_menu(callback_query: types.CallbackQuery, state: FSMConte
     except Exception as e:
         logger.error(f"Ошибка при удалении сообщения: {e}")
 
+@router.message(F.text == "/debug_slots")
+async def debug_slots(message: types.Message):
+    try:
+        import aiosqlite
+        from config import DATABASE_PATH
+        
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            cursor = await db.execute("SELECT * FROM slots WHERE status = 'active'")
+            rows = await cursor.fetchall()
+            
+            if not rows:
+                await message.answer("Нет активных слотов в базе данных.")
+                return
+                
+            columns = [description[0] for description in cursor.description]
+            
+            result = "Активные слоты:\n\n"
+            for row in rows:
+                slot = dict(zip(columns, row))
+                time_value = slot['time']
+                normalized_time = normalize_time_format(time_value)
+                slot_datetime = parse_slot_datetime(slot['day'], time_value)
+                
+                result += f"ID: {slot['id']}\n"
+                result += f"День: {slot['day']}\n"
+                result += f"Время (исходное): {time_value}\n"
+                result += f"Время (нормализованное): {normalized_time}\n"
+                result += f"Дата/время (объект): {slot_datetime}\n"
+                result += f"Giver ID: {slot['giver_id']}\n"
+                result += f"Receiver ID: {slot['receiver_id']}\n"
+                result += f"Статус: {slot['status']}\n\n"
+                
+            await message.answer(result)
+    except Exception as e:
+        logger.error(f"Ошибка при отладке слотов: {e}")
+        await message.answer(f"Ошибка при отладке: {e}")
+
 SLOTS_SCHEDULE = {
-    "28 февраля": ["16:00-17:00", "19:00-20:00", "20:00-21:00", "23:30-00:00"],
+    "28 февраля": ["16:00-17:00", "19:00-20:00", "20:00-21:00", "23:00-00:00", "23"],
     "1 марта": ["00:00-01:00", "02:00-03:00", "03:00-04:00", "04:00-05:00", 
                 "05:00-06:00", "06:00-07:00", "08:00-09:00", "10:00-11:00",
                 "11:00-12:00", "12:00-13:00", "13:00-14:00", "14:00-15:00",
                 "15:00-16:00", "17:30-18:00", "18:00-19:00", "21:00-22:00", 
-                "22:00-23:00"],
+                "22:00-23:00", "23"],
     "2 марта": ["01:00-02:00", "02:00-03:00", "03:00-04:00", "04:00-05:00",
                "05:00-06:00", "06:00-07:00", "07:00-08:00", "08:00-09:00",
-               "09:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00"]
+               "09:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00", "23"]
 }
 
 @router.message(F.text == "Я хочу сделать массаж")
@@ -215,6 +253,9 @@ async def process_comment(message: types.Message, state: FSMContext):
             await state.clear()
             return
         
+        normalized_time = normalize_time_format(time)
+        logger.info(f"Сохраняем слот с нормализованным временем: {normalized_time} (исходное: {time})")
+        
         await add_slot(user_id, day, time, comment)
         await message.answer(
             f"Вы записаны на дарение массажа:\nДень: {day}\nВремя: {time}\nКомментарий: {comment}", 
@@ -222,7 +263,6 @@ async def process_comment(message: types.Message, state: FSMContext):
         )
         
         try:
-            # Создаем напоминание за 30 минут
             reminder_time = slot_datetime - timedelta(minutes=30)
             delay = (reminder_time - now).total_seconds()
 

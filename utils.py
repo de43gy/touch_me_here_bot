@@ -94,13 +94,34 @@ def get_current_moscow_time():
     """
     return datetime.now(MOSCOW_TZ)
 
+def normalize_time_format(time_str):
+    """
+    Нормализует формат времени, добавляя :00 если указан только час.
+    
+    Args:
+        time_str (str): Строка с временем в формате "HH:MM" или просто "HH"
+        
+    Returns:
+        str: Нормализованная строка с временем
+    """
+    if time_str.isdigit():
+        return f"{time_str}:00"
+        
+    if "-" in time_str:
+        time_parts = time_str.split("-")
+        first_part = time_parts[0].strip()
+        if first_part.isdigit():
+            return f"{first_part}:00"
+    
+    return time_str
+
 def parse_slot_datetime(day, time):
     """
     Парсит дату и время слота в объект datetime с московской временной зоной.
     
     Args:
         day (str): День слота в формате "DD месяц"
-        time (str): Время слота в формате "HH:MM-HH:MM"
+        time (str): Время слота в формате "HH:MM-HH:MM" или просто "HH"
         
     Returns:
         datetime: Объект datetime с установленной московской временной зоной,
@@ -126,7 +147,13 @@ def parse_slot_datetime(day, time):
             logger.error(f"Некорректное название месяца: {month_name}")
             return None
         
-        time_str = time.split("-")[0].strip()
+        normalized_time = normalize_time_format(time)
+        
+        time_str = normalized_time.split("-")[0].strip()
+        
+        if ":" not in time_str:
+            time_str = f"{time_str}:00"
+            
         time_parts = time_str.split(":")
         
         if len(time_parts) < 2:
