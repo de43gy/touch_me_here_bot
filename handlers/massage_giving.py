@@ -1,3 +1,14 @@
+@router.callback_query(F.data == "back_to_main")
+async def back_to_main_menu(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    await state.clear()
+    
+    await callback_query.message.answer("Вы вернулись в главное меню", reply_markup=main_menu)
+    
+    try:
+        await callback_query.message.delete()
+    except Exception as e:
+        logger.error(f"Ошибка при удалении сообщения: {e}")
 from aiogram import types, Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.filters.state import State, StatesGroup
@@ -150,8 +161,22 @@ async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(GiveMassage.day, F.data == "back_to_days")
 async def back_to_days(callback_query: types.CallbackQuery, state: FSMContext):
-    await show_rules(callback_query.message, state)
     await callback_query.answer()
+    markup = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="Я прочитал и согласен", callback_data="confirm_give_rules")]
+    ])
+    
+    await callback_query.message.edit_text(
+        "Привет, Бёрнер! \n"
+        "Ты записался на дарение или получение массажа, и мы рады тебя будем видеть в своей хижине в то время, в которое ты записался.\n"
+        "Помни, пожалуйста, что одним из главных правил у нас является активное согласие. Это значит, что того, кому ты даришь массаж, "
+        "необходимо спросить, что он хочет получить и каким именно образом. Человек может отказаться или передумать в процессе и это окей. \n"
+        "Пожалуйста, уважай наше сообщество и люби его. \n"
+        "Помни, что у нас в палатке нет сексуализированных практик, а для нас это очень важно. Для этого есть другие кемпы. \n"
+        "С любовью, кемп \"Трогай тут\"",
+        reply_markup=markup
+    )
+    await state.set_state(GiveMassage.confirmation)
 
 @router.callback_query(GiveMassage.time)
 async def process_time(callback_query: types.CallbackQuery, state: FSMContext):

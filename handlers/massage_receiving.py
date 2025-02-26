@@ -1,3 +1,14 @@
+@router.callback_query(F.data == "back_to_main")
+async def back_to_main_menu(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    await state.clear()
+    
+    await callback_query.message.answer("Вы вернулись в главное меню", reply_markup=main_menu)
+    
+    try:
+        await callback_query.message.delete()
+    except Exception as e:
+        logger.error(f"Ошибка при удалении сообщения: {e}")
 from aiogram import types, Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.filters.state import State, StatesGroup
@@ -45,9 +56,13 @@ async def show_available_slots_after_confirmation(callback_query: types.Callback
     
     slots = await get_available_slots()
     if not slots:
+        inline_markup = types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="Вернуться в главное меню", callback_data="back_to_main")]
+        ])
+        
         await callback_query.message.edit_text(
             "К сожалению, сейчас нет доступных слотов для записи.", 
-            reply_markup=main_menu
+            reply_markup=inline_markup
         )
         await state.clear()
         return
@@ -58,7 +73,20 @@ async def show_available_slots_after_confirmation(callback_query: types.Callback
     filtered_slots = []
     for slot in slots:
         try:
-            day_parts = slot['day'].split()
+            if 'day' not in slot or 'time' not in slot:
+                logger.error(f"Слот не содержит необходимых полей day или time: {slot}")
+                continue
+                
+            day_str = slot['day']
+            if not day_str or len(day_str.split()) < 2:
+                logger.error(f"Некорректный формат дня: {day_str}")
+                continue
+            
+            day_parts = day_str.split()
+            if day_parts[0] == 'День':
+                logger.error(f"Некорректный формат дня (начинается с 'День'): {day_str}")
+                continue
+                
             day_num = int(day_parts[0])
             month_name = day_parts[1]
             month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
@@ -78,9 +106,13 @@ async def show_available_slots_after_confirmation(callback_query: types.Callback
             logger.error(f"Ошибка при фильтрации слота: {e}")
     
     if not filtered_slots:
+        inline_markup = types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="Вернуться в главное меню", callback_data="back_to_main")]
+        ])
+        
         await callback_query.message.edit_text(
             "К сожалению, все доступные слоты уже прошли или заняты.", 
-            reply_markup=main_menu
+            reply_markup=inline_markup
         )
         await state.clear()
         return
@@ -160,12 +192,24 @@ async def process_day_selection(callback_query: types.CallbackQuery, state: FSMC
 @router.callback_query(ReceiveMassage.day, F.data == "back_to_days")
 async def back_to_days(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.answer()
-    await show_rules(callback_query.message, state)
+    markup = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="Я прочитал и согласен", callback_data="confirm_receive_rules")]
+    ])
+    
+    await callback_query.message.edit_text(
+        "«Важно!\n"
+        "При дарении массажа необходимо соблюдать принципы взаимного согласия и уважения. "
+        "Все действия должны быть комфортными для обеих сторон. Массаж не подразумевает никакого "
+        "сексуализированного контекста. Если кто-либо испытывает дискомфорт, процесс должен быть "
+        "немедленно остановлен. Уважайте границы друг друга!»",
+        reply_markup=markup
+    )
+    await state.set_state(ReceiveMassage.confirmation)
 
 @router.callback_query(ReceiveMassage.time, F.data == "back_to_days")
 async def back_to_days_from_time(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.answer()
-    await show_rules(callback_query.message, state)
+    await back_to_days(callback_query, state)
 
 @router.callback_query(ReceiveMassage.time)
 async def process_time_selection(callback_query: types.CallbackQuery, state: FSMContext):
