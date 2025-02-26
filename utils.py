@@ -92,7 +92,7 @@ def get_current_moscow_time():
     """
     Возвращает текущее время в московской временной зоне.
     """
-    return datetime.now(MOSCOW_TZ)
+    return datetime.now(pytz.UTC).astimezone(MOSCOW_TZ)
 
 def normalize_time_format(time_str):
     """
@@ -165,7 +165,10 @@ def parse_slot_datetime(day, time):
         
         current_year = datetime.now().year
         
-        slot_datetime = datetime(current_year, month_num, day_num, hour, minute, tzinfo=MOSCOW_TZ)
+        naive_datetime = datetime(current_year, month_num, day_num, hour, minute)
+        slot_datetime = MOSCOW_TZ.localize(naive_datetime)
+        
+        logger.info(f"Создан datetime для слота: {slot_datetime} (day={day}, time={time})")
         
         return slot_datetime
     except Exception as e:

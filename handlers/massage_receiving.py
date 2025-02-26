@@ -36,6 +36,50 @@ async def back_to_main_menu(callback_query: types.CallbackQuery, state: FSMConte
     except Exception as e:
         logger.error(f"Ошибка при удалении сообщения: {e}")
 
+@router.message(F.text == "/debug_time")
+async def debug_time(message: types.Message):
+    try:
+        now_utc = datetime.now(pytz.UTC)
+        now_moscow = get_current_moscow_time()
+        
+        result = "Отладка времени:\n\n"
+        result += f"UTC: {now_utc}\n"
+        result += f"Московское время: {now_moscow}\n"
+        result += f"Разница: {now_moscow.tzinfo.utcoffset(now_moscow)}\n\n"
+        
+        import aiosqlite
+        from config import DATABASE_PATH
+        
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            cursor = await db.execute("SELECT * FROM slots WHERE status = 'active'")
+            rows = await cursor.fetchall()
+            
+            if not rows:
+                result += "Нет активных слотов в базе данных."
+            else:
+                columns = [description[0] for description in cursor.description]
+                result += "Активные слоты:\n\n"
+                
+                for row in rows:
+                    slot = dict(zip(columns, row))
+                    time_value = slot['time']
+                    normalized_time = normalize_time_format(time_value)
+                    slot_datetime = parse_slot_datetime(slot['day'], time_value)
+                    
+                    result += f"ID: {slot['id']}\n"
+                    result += f"День: {slot['day']}\n"
+                    result += f"Время (исх.): {time_value}\n"
+                    result += f"Время (норм.): {normalized_time}\n"
+                    result += f"Парсированная дата/время: {slot_datetime}\n"
+                    result += f"В будущем: {slot_datetime > now_moscow}\n"
+                    result += f"Giver ID: {slot['giver_id']}\n"
+                    result += f"Receiver ID: {slot['receiver_id']}\n\n"
+                    
+        await message.answer(result)
+    except Exception as e:
+        logger.error(f"Ошибка при отладке времени: {e}")
+        await message.answer(f"Ошибка при отладке: {e}")
+
 @router.message(F.text == "Я хочу получить массаж")
 async def show_rules(message: types.Message, state: FSMContext):
     markup = types.InlineKeyboardMarkup(inline_keyboard=[
@@ -72,6 +116,7 @@ async def show_available_slots_after_confirmation(callback_query: types.Callback
     user_id = callback_query.from_user.id
     
     now = get_current_moscow_time()
+    logger.info(f"Текущее московское время: {now}")
     
     logger.info(f"Доступные слоты: {len(slots)}")
     for i, slot in enumerate(slots):
@@ -99,14 +144,20 @@ async def show_available_slots_after_confirmation(callback_query: types.Callback
               
             slot_datetime = parse_slot_datetime(slot['day'], slot['time'])
             
-            if slot_datetime and slot_datetime > now and await is_slot_available(slot['day'], slot['time'], user_id):
-                if slot['giver_id'] != user_id:
-                    filtered_slots.append(slot)
-                    logger.info(f"Добавлен доступный слот: {slot['day']} {slot['time']}")
-                else:
-                    logger.info(f"Пропущен слот созданный текущим пользователем: {slot['day']} {slot['time']}")
+            is_future = slot_datetime and slot_datetime > now
+            logger.info(f"Слот в будущем: {is_future}, datetime={slot_datetime}")
+            
+            is_available = await is_slot_available(slot['day'], slot['time'], user_id)
+            logger.info(f"Слот доступен для записи: {is_available}")
+            
+            is_not_self = slot['giver_id'] != user_id
+            logger.info(f"Слот не создан текущим пользователем: {is_not_self}, giver_id={slot['giver_id']}, user_id={user_id}")
+            
+            if is_future and is_available and is_not_self:
+                filtered_slots.append(slot)
+                logger.info(f"Добавлен доступный слот: {slot['day']} {slot['time']}")
             else:
-                logger.info(f"Пропущен недоступный слот: {slot['day']} {slot['time']}, datetime={slot_datetime}")
+                logger.info(f"Пропущен недоступный слот: {slot['day']} {slot['time']}")
         except Exception as e:
             logger.error(f"Ошибка при фильтрации слота: {e}")
     
