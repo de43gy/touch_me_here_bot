@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=BOT_TOKEN)
 
 class GiveMassage(StatesGroup):
+    confirmation = State()
     day = State()
     time = State()
     comment = State()
@@ -35,7 +36,25 @@ SLOTS_SCHEDULE = {
 }
 
 @router.message(F.text == "Я хочу сделать массаж")
-async def request_day(message: types.Message, state: FSMContext):
+async def show_rules(message: types.Message, state: FSMContext):
+    markup = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="Я прочитал и согласен", callback_data="confirm_give_rules")]
+    ])
+    
+    await message.answer(
+        "Привет, Бёрнер! \n"
+        "Ты записался на дарение или получение массажа, и мы рады тебя будем видеть в своей хижине в то время, в которое ты записался.\n"
+        "Помни, пожалуйста, что одним из главных правил у нас является активное согласие. Это значит, что того, кому ты даришь массаж, "
+        "необходимо спросить, что он хочет получить и каким именно образом. Человек может отказаться или передумать в процессе и это окей. \n"
+        "Пожалуйста, уважай наше сообщество и люби его. \n"
+        "Помни, что у нас в палатке нет сексуализированных практик, а для нас это очень важно. Для этого есть другие кемпы. \n"
+        "С любовью, кемп \"Трогай тут\"",
+        reply_markup=markup
+    )
+    await state.set_state(GiveMassage.confirmation)
+
+@router.callback_query(GiveMassage.confirmation, F.data == "confirm_give_rules")
+async def request_day(callback_query: types.CallbackQuery, state: FSMContext):
     markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     
     now = datetime.now()
@@ -57,14 +76,21 @@ async def request_day(message: types.Message, state: FSMContext):
             logger.error(f"Ошибка при обработке даты {day}: {e}")
     
     if not available_days:
-        await message.answer("К сожалению, мероприятие уже закончилось и запись не доступна.", reply_markup=main_menu)
+        await callback_query.message.edit_text(
+            "К сожалению, мероприятие уже закончилось и запись не доступна.", 
+            reply_markup=main_menu
+        )
+        await state.clear()
         return
     
     for day in available_days:
         button = types.InlineKeyboardButton(text=day, callback_data=f"give_day:{day}")
         markup.inline_keyboard.append([button])
 
-    await message.answer("Пожалуйста, выберите день, когда вы хотите делать массаж:", reply_markup=markup)
+    await callback_query.message.edit_text(
+        "Пожалуйста, выберите день, когда вы хотите делать массаж:", 
+        reply_markup=markup
+    )
     await state.set_state(GiveMassage.day)
 
 @router.callback_query(GiveMassage.day)
@@ -122,7 +148,7 @@ async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(GiveMassage.day, F.data == "back_to_days")
 async def back_to_days(callback_query: types.CallbackQuery, state: FSMContext):
-    await request_day(callback_query.message, state)
+    await show_rules(callback_query.message, state)
     await callback_query.answer()
 
 @router.callback_query(GiveMassage.time)

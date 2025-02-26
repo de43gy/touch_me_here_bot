@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=BOT_TOKEN)
 
 class ReceiveMassage(StatesGroup):
+    confirmation = State()
     day = State()
     time = State()
     comment = State()
@@ -23,13 +24,33 @@ class ReceiveMassage(StatesGroup):
 router = Router()
 
 @router.message(F.text == "Я хочу получить массаж")
-async def show_available_slots(message: types.Message, state: FSMContext):
+async def show_rules(message: types.Message, state: FSMContext):
+    markup = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="Я прочитал и согласен", callback_data="confirm_receive_rules")]
+    ])
+    
+    await message.answer(
+        "«Важно!\n"
+        "При дарении массажа необходимо соблюдать принципы взаимного согласия и уважения. "
+        "Все действия должны быть комфортными для обеих сторон. Массаж не подразумевает никакого "
+        "сексуализированного контекста. Если кто-либо испытывает дискомфорт, процесс должен быть "
+        "немедленно остановлен. Уважайте границы друг друга!»",
+        reply_markup=markup
+    )
+    await state.set_state(ReceiveMassage.confirmation)
+
+@router.callback_query(ReceiveMassage.confirmation, F.data == "confirm_receive_rules")
+async def show_available_slots(callback_query: types.CallbackQuery, state: FSMContext):
     slots = await get_available_slots()
     if not slots:
-        await message.answer("К сожалению, сейчас нет доступных слотов для записи.", reply_markup=main_menu)
+        await callback_query.message.edit_text(
+            "К сожалению, сейчас нет доступных слотов для записи.", 
+            reply_markup=main_menu
+        )
+        await state.clear()
         return
 
-    user_id = message.from_user.id
+    user_id = callback_query.from_user.id
     
     now = datetime.now()
     filtered_slots = []
@@ -55,8 +76,11 @@ async def show_available_slots(message: types.Message, state: FSMContext):
             logger.error(f"Ошибка при фильтрации слота: {e}")
     
     if not filtered_slots:
-        await message.answer("К сожалению, все доступные слоты уже прошли или заняты.", 
-                             reply_markup=main_menu)
+        await callback_query.message.edit_text(
+            "К сожалению, все доступные слоты уже прошли или заняты.", 
+            reply_markup=main_menu
+        )
+        await state.clear()
         return
 
     markup = types.InlineKeyboardMarkup(inline_keyboard=[])
@@ -66,7 +90,10 @@ async def show_available_slots(message: types.Message, state: FSMContext):
         button = types.InlineKeyboardButton(text=day, callback_data=f"receive_day:{day}")
         markup.inline_keyboard.append([button])
 
-    await message.answer("Выберите день:", reply_markup=markup)
+    await callback_query.message.edit_text("Вы можете делать массаж и меньше часа,"
+                                           " просто укажите это в комментарии."
+                                           " Пожалуйста не опаздывайте  на свой слот дарения массажа 🙏🏻", reply_markup=markup)
+    await callback_query.message.edit_text("Выберите день:", reply_markup=markup)
     await state.set_state(ReceiveMassage.day)
 
 @router.callback_query(ReceiveMassage.day)
@@ -133,12 +160,12 @@ async def process_day_selection(callback_query: types.CallbackQuery, state: FSMC
 
 @router.callback_query(ReceiveMassage.day, F.data == "back_to_days")
 async def back_to_days(callback_query: types.CallbackQuery, state: FSMContext):
-    await show_available_slots(callback_query.message, state)
+    await show_available_slots(callback_query, state)
     await callback_query.answer()
 
 @router.callback_query(ReceiveMassage.time, F.data == "back_to_days")
 async def back_to_days_from_time(callback_query: types.CallbackQuery, state: FSMContext):
-    await show_available_slots(callback_query.message, state)
+    await show_available_slots(callback_query, state)
     await callback_query.answer()
 
 @router.callback_query(ReceiveMassage.time)
