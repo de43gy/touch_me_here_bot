@@ -187,7 +187,12 @@ async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
             )
             return
 
-        await callback_query.message.edit_text(f"Вы выбрали день: {day}. Теперь выберите время:", reply_markup=markup)
+        await callback_query.message.edit_text(
+            f"Вы выбрали день: {day}. Теперь выберите время:\n\n"
+            f"«Вы можете делать массаж и меньше часа, просто укажите это в комментарии. \n"
+            f"Пожалуйста не опаздывайте на свой слот дарения массажа 🙏🏻»", 
+            reply_markup=markup
+        )
         await state.set_state(GiveMassage.time)
     elif callback_query.data == "back_to_days":
         await back_to_days(callback_query, state)
