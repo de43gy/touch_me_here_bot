@@ -166,8 +166,19 @@ async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
             if not slot_datetime or slot_datetime <= now:
                 continue
                 
+            display_time = time
+            if "-" in time:
+                start_time, end_time = time.split("-")
+                if ":" not in start_time.strip():
+                    start_time = f"{start_time.strip()}:00"
+                if ":" not in end_time.strip():
+                    end_time = f"{end_time.strip()}:00"
+                display_time = f"{start_time.strip()}-{end_time.strip()}"
+            elif ":" not in time:
+                display_time = f"{time}:00"
+                
             if await is_slot_available(day, time, user_id):
-                button = types.InlineKeyboardButton(text=time, callback_data=f"give_time:{time}")
+                button = types.InlineKeyboardButton(text=display_time, callback_data=f"give_time:{time}")
                 markup.inline_keyboard.append([button])
                 available_slots_count += 1
         
@@ -259,8 +270,20 @@ async def process_comment(message: types.Message, state: FSMContext):
         logger.info(f"Сохраняем слот с нормализованным временем: {normalized_time} (исходное: {time})")
         
         await add_slot(user_id, day, time, comment)
+        
+        display_time = time
+        if "-" in time:
+            start_time, end_time = time.split("-")
+            if ":" not in start_time.strip():
+                start_time = f"{start_time.strip()}:00"
+            if ":" not in end_time.strip():
+                end_time = f"{end_time.strip()}:00"
+            display_time = f"{start_time.strip()}-{end_time.strip()}"
+        elif ":" not in time:
+            display_time = f"{time}:00"
+        
         await message.answer(
-            f"Вы записаны на дарение массажа:\nДень: {day}\nВремя: {time}\nКомментарий: {comment}", 
+            f"Вы записаны на дарение массажа:\nДень: {day}\nВремя: {display_time}\nКомментарий: {comment}", 
             reply_markup=main_menu
         )
         
@@ -288,11 +311,32 @@ async def process_comment(message: types.Message, state: FSMContext):
         )
     finally:
         await state.clear()
+            
+    except Exception as e:
+        logger.error(f"Ошибка при создании слота: {e}")
+        await message.answer(
+            "Произошла ошибка при создании слота. Пожалуйста, попробуйте еще раз.",
+            reply_markup=main_menu
+        )
+    finally:
+        await state.clear()
 
 async def schedule_reminder(user_id: int, username: str, day: str, time: str, role: str, delay: int):
     await asyncio.sleep(delay)
+    
+    display_time = time
+    if "-" in time:
+        start_time, end_time = time.split("-")
+        if ":" not in start_time.strip():
+            start_time = f"{start_time.strip()}:00"
+        if ":" not in end_time.strip():
+            end_time = f"{end_time.strip()}:00"
+        display_time = f"{start_time.strip()}-{end_time.strip()}"
+    elif ":" not in time:
+        display_time = f"{time}:00"
+    
     if role == "giver":
-        text = f"Я помню, что через 30 минут делаю массаж в «Трогай тут (корпус , этаж)» и приду его делать 👌🏻"
+        text = f"Я помню, что через 30 минут делаю массаж в «Трогай тут (корпус , этаж)» ({day}, {display_time}) и приду его делать 👌🏻"
     elif role == "receiver":
-        text = f"Я помню, что через 30 минут получаю массаж в «Трогай тут (корпус , этаж)» и приду его получать 👌🏻"
+        text = f"Я помню, что через 30 минут получаю массаж в «Трогай тут (корпус , этаж)» ({day}, {display_time}) и приду его получать 👌🏻"
     await bot.send_message(user_id, text, reply_markup=reminder_menu)

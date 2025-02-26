@@ -223,7 +223,7 @@ async def process_day_selection(callback_query: types.CallbackQuery, state: FSMC
         
         filtered_slots = []
         for slot in day_slots:
-            if slot['giver_id'] != user_id and slot['receiver_id'] is None:
+            if slot['giver_id'] != user_id and slot['receiver_id'] is None and await is_slot_available(slot['day'], slot['time'], user_id):
                 filtered_slots.append(slot)
         
         if not filtered_slots:
@@ -334,10 +334,25 @@ async def process_comment(message: types.Message, state: FSMContext):
         logger.error(f"Ошибка при проверке времени слота: {e}")
 
     await book_slot(slot_id, user_id, comment)
-    await message.answer(f"Вы записаны на массаж!\n{await format_slot_info(slot)}", reply_markup=main_menu)
+    
+    time_str = slot['time']
+    if "-" in time_str:
+        start_time, end_time = time_str.split("-")
+        if ":" not in start_time.strip():
+            start_time = f"{start_time.strip()}:00"
+        if ":" not in end_time.strip():
+            end_time = f"{end_time.strip()}:00"
+        display_time = f"{start_time.strip()}-{end_time.strip()}"
+    elif ":" not in time_str:
+        display_time = f"{time_str}:00"
+    else:
+        display_time = time_str
+        
+    formatted_slot_info = await format_slot_info(slot)
+    await message.answer(f"Вы записаны на получение массажа!\n{formatted_slot_info}\nВремя: {display_time}", reply_markup=main_menu)
     
     giver_id = slot['giver_id']
-    await bot.send_message(giver_id, f"К вам записались на массаж!\nКомментарий: {comment}")
+    await bot.send_message(giver_id, f"К вам записались на массаж!\nДень: {slot['day']}\nВремя: {display_time}\nКомментарий: {comment}")
     
     try:
         now = get_current_moscow_time()
@@ -363,8 +378,20 @@ async def process_comment(message: types.Message, state: FSMContext):
 
 async def schedule_reminder(user_id: int, username: str, day: str, time: str, role: str, delay: int):
     await asyncio.sleep(delay)
+    
+    display_time = time
+    if "-" in time:
+        start_time, end_time = time.split("-")
+        if ":" not in start_time.strip():
+            start_time = f"{start_time.strip()}:00"
+        if ":" not in end_time.strip():
+            end_time = f"{end_time.strip()}:00"
+        display_time = f"{start_time.strip()}-{end_time.strip()}"
+    elif ":" not in time:
+        display_time = f"{time}:00"
+    
     if role == "giver":
-        text = f"Я помню, что через 30 минут делаю массаж в «Трогай тут (корпус , этаж)» и приду его делать 👌🏻"
+        text = f"Я помню, что через 30 минут делаю массаж в «Трогай тут (корпус , этаж)» ({day}, {display_time}) и приду его делать 👌🏻"
     elif role == "receiver":
-        text = f"Я помню, что через 30 минут получаю массаж в «Трогай тут (корпус , этаж)» и приду его получать 👌🏻"
+        text = f"Я помню, что через 30 минут получаю массаж в «Трогай тут (корпус , этаж)» ({day}, {display_time}) и приду его получать 👌🏻"
     await bot.send_message(user_id, text, reply_markup=reminder_menu)
