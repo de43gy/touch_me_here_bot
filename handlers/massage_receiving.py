@@ -1,14 +1,3 @@
-@router.callback_query(F.data == "back_to_main")
-async def back_to_main_menu(callback_query: types.CallbackQuery, state: FSMContext):
-    await callback_query.answer()
-    await state.clear()
-    
-    await callback_query.message.answer("Вы вернулись в главное меню", reply_markup=main_menu)
-    
-    try:
-        await callback_query.message.delete()
-    except Exception as e:
-        logger.error(f"Ошибка при удалении сообщения: {e}")
 from aiogram import types, Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.filters.state import State, StatesGroup
@@ -33,6 +22,18 @@ class ReceiveMassage(StatesGroup):
     comment = State()
 
 router = Router()
+
+@router.callback_query(F.data == "back_to_main")
+async def back_to_main_menu(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    await state.clear()
+    
+    await callback_query.message.answer("Вы вернулись в главное меню", reply_markup=main_menu)
+    
+    try:
+        await callback_query.message.delete()
+    except Exception as e:
+        logger.error(f"Ошибка при удалении сообщения: {e}")
 
 @router.message(F.text == "Я хочу получить массаж")
 async def show_rules(message: types.Message, state: FSMContext):

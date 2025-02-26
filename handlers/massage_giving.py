@@ -1,14 +1,3 @@
-@router.callback_query(F.data == "back_to_main")
-async def back_to_main_menu(callback_query: types.CallbackQuery, state: FSMContext):
-    await callback_query.answer()
-    await state.clear()
-    
-    await callback_query.message.answer("Вы вернулись в главное меню", reply_markup=main_menu)
-    
-    try:
-        await callback_query.message.delete()
-    except Exception as e:
-        logger.error(f"Ошибка при удалении сообщения: {e}")
 from aiogram import types, Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.filters.state import State, StatesGroup
@@ -33,6 +22,18 @@ class GiveMassage(StatesGroup):
     comment = State()
 
 router = Router()
+
+@router.callback_query(F.data == "back_to_main")
+async def back_to_main_menu(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    await state.clear()
+    
+    await callback_query.message.answer("Вы вернулись в главное меню", reply_markup=main_menu)
+    
+    try:
+        await callback_query.message.delete()
+    except Exception as e:
+        logger.error(f"Ошибка при удалении сообщения: {e}")
 
 SLOTS_SCHEDULE = {
     "28 февраля": ["16:00-17:00", "19:00-20:00", "20:00-21:00", "23:30-00:00"],
