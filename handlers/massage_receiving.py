@@ -72,6 +72,7 @@ async def show_available_slots_after_confirmation(callback_query: types.Callback
     user_id = callback_query.from_user.id
     
     now = get_current_moscow_time()
+    
     filtered_slots = []
     for slot in slots:
         try:
@@ -88,7 +89,7 @@ async def show_available_slots_after_confirmation(callback_query: types.Callback
             if day_parts[0] == 'День':
                 logger.error(f"Некорректный формат дня (начинается с 'День'): {day_str}")
                 continue
-                
+               
             slot_datetime = parse_slot_datetime(slot['day'], slot['time'])
             
             if slot_datetime and slot_datetime > now and await is_slot_available(slot['day'], slot['time'], user_id):
@@ -120,53 +121,56 @@ async def show_available_slots_after_confirmation(callback_query: types.Callback
 
 @router.callback_query(ReceiveMassage.day)
 async def process_day_selection(callback_query: types.CallbackQuery, state: FSMContext):
-    day = callback_query.data.split(":")[1]
-    await state.update_data(day=day)
-
-    slots = await get_available_slots()
-    now = datetime.now()
-    
-    day_slots = []
-    for slot in slots:
-        if slot['day'] == day:
-            try:
-                slot_datetime = parse_slot_datetime(slot['day'], slot['time'])
-                
-                if slot_datetime and slot_datetime > now:
-                    day_slots.append(slot)
-            except Exception as e:
-                logger.error(f"Ошибка при фильтрации слота по дню: {e}")
-    
-    user_id = callback_query.from_user.id
-    
-    filtered_slots = []
-    for slot in day_slots:
-        if await is_slot_available(slot['day'], slot['time'], user_id) and slot['giver_id'] != user_id:
-            filtered_slots.append(slot)
-    
-    if not filtered_slots:
-        await callback_query.message.edit_text(
-            f"К сожалению, на день {day} нет доступных слотов или все слоты уже заняты.",
-            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
-                types.InlineKeyboardButton(text="← Назад", callback_data="back_to_days")
-            ]])
-        )
-        await callback_query.answer()
-        return
-
-    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
-    for slot in filtered_slots:
-        slot_info = await format_slot_info(slot)
-        button = types.InlineKeyboardButton(text=slot_info, callback_data=f"receive_time:{slot['id']}")
-        markup.inline_keyboard.append([button])
-    
-    markup.inline_keyboard.append([
-        types.InlineKeyboardButton(text="← Назад", callback_data="back_to_days")
-    ])
-
-    await callback_query.message.edit_text(f"Доступные слоты на {day}:", reply_markup=markup)
-    await state.set_state(ReceiveMassage.time)
     await callback_query.answer()
+    
+    if callback_query.data.startswith("receive_day:"):
+        day = callback_query.data.split(":")[1]
+        await state.update_data(day=day)
+
+        slots = await get_available_slots()
+        now = get_current_moscow_time()
+        
+        day_slots = []
+        for slot in slots:
+            if slot['day'] == day:
+                try:
+                    slot_datetime = parse_slot_datetime(slot['day'], slot['time'])
+                    
+                    if slot_datetime and slot_datetime > now:
+                        day_slots.append(slot)
+                except Exception as e:
+                    logger.error(f"Ошибка при фильтрации слота по дню: {e}")
+        
+        user_id = callback_query.from_user.id
+        
+        filtered_slots = []
+        for slot in day_slots:
+            if await is_slot_available(slot['day'], slot['time'], user_id) and slot['giver_id'] != user_id:
+                filtered_slots.append(slot)
+        
+        if not filtered_slots:
+            await callback_query.message.edit_text(
+                f"К сожалению, на день {day} нет доступных слотов или все слоты уже заняты.",
+                reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+                    types.InlineKeyboardButton(text="← Назад", callback_data="back_to_days")
+                ]])
+            )
+            return
+
+        markup = types.InlineKeyboardMarkup(inline_keyboard=[])
+        for slot in filtered_slots:
+            slot_info = await format_slot_info(slot)
+            button = types.InlineKeyboardButton(text=slot_info, callback_data=f"receive_time:{slot['id']}")
+            markup.inline_keyboard.append([button])
+        
+        markup.inline_keyboard.append([
+            types.InlineKeyboardButton(text="← Назад", callback_data="back_to_days")
+        ])
+
+        await callback_query.message.edit_text(f"Доступные слоты на {day}:", reply_markup=markup)
+        await state.set_state(ReceiveMassage.time)
+    elif callback_query.data == "back_to_days":
+        await back_to_days(callback_query, state)
 
 @router.callback_query(ReceiveMassage.day, F.data == "back_to_days")
 async def back_to_days(callback_query: types.CallbackQuery, state: FSMContext):
@@ -192,16 +196,17 @@ async def back_to_days_from_time(callback_query: types.CallbackQuery, state: FSM
 
 @router.callback_query(ReceiveMassage.time)
 async def process_time_selection(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    
     if callback_query.data == "back_to_days":
         await back_to_days_from_time(callback_query, state)
         return
-        
-    slot_id = int(callback_query.data.split(":")[1])
-    await state.update_data(slot_id=slot_id)
+    elif callback_query.data.startswith("receive_time:"):   
+        slot_id = int(callback_query.data.split(":")[1])
+        await state.update_data(slot_id=slot_id)
 
-    await callback_query.message.edit_text("Напишите комментарий к записи (необязательно):")
-    await state.set_state(ReceiveMassage.comment)
-    await callback_query.answer()
+        await callback_query.message.edit_text("Напишите комментарий к записи (необязательно):")
+        await state.set_state(ReceiveMassage.comment)
 
 @router.message(ReceiveMassage.comment)
 async def process_comment(message: types.Message, state: FSMContext):

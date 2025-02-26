@@ -77,20 +77,11 @@ async def is_slot_available(day, time, user_id=None):
 
 async def is_cancellation_allowed(slot):
     try:
-        day_parts = slot['day'].split()
-        day_num = int(day_parts[0])
-        month_name = day_parts[1]
-        month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
-                    "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
-        month_num = month_map.get(month_name.lower(), 0)
-        
-        time_str = slot['time'].split("-")[0].strip()
-        time_parts = time_str.split(":")
-        hour = int(time_parts[0])
-        minute = int(time_parts[1]) if len(time_parts) > 1 else 0
-        
-        now = datetime.now(MOSCOW_TZ)
-        slot_datetime = datetime(now.year, month_num, day_num, hour, minute, tzinfo=MOSCOW_TZ)
+        slot_datetime = parse_slot_datetime(slot['day'], slot['time'])
+        if not slot_datetime:
+            return False
+            
+        now = get_current_moscow_time()
         
         return now < slot_datetime - timedelta(minutes=30)
     except Exception as e:
@@ -98,24 +89,58 @@ async def is_cancellation_allowed(slot):
         return False
 
 def get_current_moscow_time():
+    """
+    Возвращает текущее время в московской временной зоне.
+    """
     return datetime.now(MOSCOW_TZ)
 
 def parse_slot_datetime(day, time):
+    """
+    Парсит дату и время слота в объект datetime с московской временной зоной.
+    
+    Args:
+        day (str): День слота в формате "DD месяц"
+        time (str): Время слота в формате "HH:MM-HH:MM"
+        
+    Returns:
+        datetime: Объект datetime с установленной московской временной зоной,
+                 или None в случае ошибки
+    """
     try:
         day_parts = day.split()
+        if len(day_parts) < 2:
+            logger.error(f"Некорректный формат дня: {day}")
+            return None
+            
         day_num = int(day_parts[0])
         month_name = day_parts[1]
-        month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
-                    "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
-        month_num = month_map.get(month_name.lower(), 0)
+        
+        month_map = {
+            "января": 1, "февраля": 2, "марта": 3, "апреля": 4, 
+            "мая": 5, "июня": 6, "июля": 7, "августа": 8, 
+            "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12
+        }
+        month_num = month_map.get(month_name.lower())
+        
+        if not month_num:
+            logger.error(f"Некорректное название месяца: {month_name}")
+            return None
         
         time_str = time.split("-")[0].strip()
         time_parts = time_str.split(":")
-        hour = int(time_parts[0])
-        minute = int(time_parts[1]) if len(time_parts) > 1 else 0
         
-        now = datetime.now(MOSCOW_TZ)
-        return datetime(now.year, month_num, day_num, hour, minute, tzinfo=MOSCOW_TZ)
+        if len(time_parts) < 2:
+            hour = int(time_parts[0])
+            minute = 0
+        else:
+            hour = int(time_parts[0])
+            minute = int(time_parts[1])
+        
+        current_year = datetime.now().year
+        
+        slot_datetime = datetime(current_year, month_num, day_num, hour, minute, tzinfo=MOSCOW_TZ)
+        
+        return slot_datetime
     except Exception as e:
-        logger.error(f"Ошибка при парсинге даты/времени слота: {e}")
+        logger.error(f"Ошибка при парсинге даты/времени слота ({day} {time}): {e}")
         return None
