@@ -22,11 +22,45 @@ class GiveMassage(StatesGroup):
 
 router = Router()
 
+SLOTS_SCHEDULE = {
+    "28 февраля": ["16:00-17:00", "19:00-20:00", "20:00-21:00", "23:30-00:00"],
+    "1 марта": ["00:00-01:00", "02:00-03:00", "03:00-04:00", "04:00-05:00", 
+                "05:00-06:00", "06:00-07:00", "08:00-09:00", "10:00-11:00",
+                "11:00-12:00", "12:00-13:00", "13:00-14:00", "14:00-15:00",
+                "15:00-16:00", "17:30-18:00", "18:00-19:00", "21:00-22:00", 
+                "22:00-23:00"],
+    "2 марта": ["01:00-02:00", "02:00-03:00", "03:00-04:00", "04:00-05:00",
+               "05:00-06:00", "06:00-07:00", "07:00-08:00", "08:00-09:00",
+               "09:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00"]
+}
+
 @router.message(F.text == "Я хочу сделать массаж")
 async def request_day(message: types.Message, state: FSMContext):
     markup = types.InlineKeyboardMarkup(inline_keyboard=[])
-    days = ["День 1", "День 2", "День 3"]
-    for day in days:
+    
+    now = datetime.now()
+    
+    available_days = []
+    for day in SLOTS_SCHEDULE.keys():
+        try:
+            day_parts = day.split()
+            day_num = int(day_parts[0])
+            month_name = day_parts[1]
+            month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
+                         "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
+            month_num = month_map.get(month_name.lower(), 0)
+            day_date = datetime(now.year, month_num, day_num)
+            
+            if day_date.date() >= now.date():
+                available_days.append(day)
+        except Exception as e:
+            logger.error(f"Ошибка при обработке даты {day}: {e}")
+    
+    if not available_days:
+        await message.answer("К сожалению, мероприятие уже закончилось и запись не доступна.", reply_markup=main_menu)
+        return
+    
+    for day in available_days:
         button = types.InlineKeyboardButton(text=day, callback_data=f"give_day:{day}")
         markup.inline_keyboard.append([button])
 
@@ -40,18 +74,55 @@ async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
 
     user_id = callback_query.from_user.id
     markup = types.InlineKeyboardMarkup(inline_keyboard=[])
-    times = ["12:00", "12:30", "13:00", "13:30"]
+    
+    times = SLOTS_SCHEDULE.get(day, [])
+    
+    now = datetime.now()
+    
+    available_slots_count = 0
     
     for time in times:
+        time_parts = time.split("-")[0].strip().split(":")
+        slot_hour = int(time_parts[0])
+        slot_minute = int(time_parts[1]) if len(time_parts) > 1 else 0
+        
+        day_parts = day.split()
+        day_num = int(day_parts[0])
+        month_name = day_parts[1]
+        month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
+                     "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
+        month_num = month_map.get(month_name.lower(), 0)
+        
+        slot_datetime = datetime(now.year, month_num, day_num, slot_hour, slot_minute)
+        
+        if slot_datetime <= now:
+            continue
+            
         if await is_slot_available(day, time, user_id):
             button = types.InlineKeyboardButton(text=time, callback_data=f"give_time:{time}")
             markup.inline_keyboard.append([button])
+            available_slots_count += 1
         else:
             button = types.InlineKeyboardButton(text=f"{time} (занято)", callback_data="ignore")
             markup.inline_keyboard.append([button])
+    
+    if available_slots_count == 0:
+        await callback_query.message.edit_text(
+            f"На {day} нет доступных слотов. Выберите другой день или попробуйте позже.",
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+                types.InlineKeyboardButton(text="← Назад", callback_data="back_to_days")
+            ]])
+        )
+        await callback_query.answer()
+        return
 
     await callback_query.message.edit_text(f"Вы выбрали день: {day}. Теперь выберите время:", reply_markup=markup)
     await state.set_state(GiveMassage.time)
+    await callback_query.answer()
+
+@router.callback_query(GiveMassage.day, F.data == "back_to_days")
+async def back_to_days(callback_query: types.CallbackQuery, state: FSMContext):
+    await request_day(callback_query.message, state)
     await callback_query.answer()
 
 @router.callback_query(GiveMassage.time)
@@ -61,8 +132,6 @@ async def process_time(callback_query: types.CallbackQuery, state: FSMContext):
         return
         
     time = callback_query.data.split(":")[1]
-    if ':' not in time:
-        time = f"{time}:00"
     await state.update_data(time=time)
     await callback_query.message.edit_text("Напишите комментарий к своему предложению массажа (необязательно):")
     await state.set_state(GiveMassage.comment)
@@ -92,17 +161,22 @@ async def process_comment(message: types.Message, state: FSMContext):
         )
         
         try:
-            now = datetime.now()
-            time_parts = time.split(':')
-            reminder_datetime = now.replace(
-                hour=int(time_parts[0]),
-                minute=int(time_parts[1]),
-                second=0,
-                microsecond=0
-            )
+            time_parts = time.split("-")[0].strip().split(":")
+            hour = int(time_parts[0])
+            minute = int(time_parts[1]) if len(time_parts) > 1 else 0
             
-            reminder_time = reminder_datetime - timedelta(minutes=30)
-            delay = (reminder_time - datetime.now()).total_seconds()
+            day_parts = day.split()
+            day_num = int(day_parts[0])
+            month_name = day_parts[1]
+            month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
+                        "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
+            month_num = month_map.get(month_name.lower(), 0)
+            
+            now = datetime.now()
+            slot_datetime = datetime(now.year, month_num, day_num, hour, minute)
+            
+            reminder_time = slot_datetime - timedelta(minutes=30)
+            delay = (reminder_time - now).total_seconds()
 
             if delay > 0:
                 asyncio.create_task(
