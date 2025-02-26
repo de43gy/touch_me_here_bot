@@ -221,8 +221,17 @@ async def process_day_selection(callback_query: types.CallbackQuery, state: FSMC
         
         user_id = callback_query.from_user.id
         
+        user_slots = await get_user_slots(user_id)
+        user_slot_times = set()
+        for user_slot in user_slots:
+            if user_slot['day'] == day:
+                user_slot_times.add(user_slot['time'])
+        
         filtered_slots = []
         for slot in day_slots:
+            if slot['time'] in user_slot_times:
+                continue
+            
             if slot['giver_id'] != user_id and slot['receiver_id'] is None and await is_slot_available(slot['day'], slot['time'], user_id):
                 filtered_slots.append(slot)
         

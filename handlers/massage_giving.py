@@ -160,13 +160,29 @@ async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
         
         available_slots_count = 0
         
+        user_slots = await get_user_slots(user_id)
+        user_slot_times = set()
+        for slot in user_slots:
+            if slot['day'] == day:
+                user_slot_times.add(slot['time'])
+        
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            cursor = await db.execute(
+                "SELECT time FROM slots WHERE day = ? AND status = 'active'",
+                (day,)
+            )
+            existing_slots = await cursor.fetchall()
+            existing_slot_times = set([slot[0] for slot in existing_slots])
+        
         for time in times:
             slot_datetime = parse_slot_datetime(day, time)
             
             if not slot_datetime or slot_datetime <= now:
                 continue
                 
-            # Форматирование времени для отображения
+            if time in user_slot_times:
+                continue
+                
             display_time = time
             if "-" in time:
                 start_time, end_time = time.split("-")

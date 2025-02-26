@@ -48,44 +48,45 @@ async def is_slot_available(day, time, user_id=None):
                 "SELECT id, giver_id, receiver_id FROM slots WHERE day = ? AND time = ? AND status = 'active'",
                 (day, time)
             )
-            existing_slot = await cursor.fetchone()
+            existing_slots = await cursor.fetchall()
             
-            if existing_slot is None:
+            if not existing_slots:
                 return True
-                
-            slot_id, giver_id, receiver_id = existing_slot
             
-            if user_id is not None:
-                if giver_id == user_id:
-                    logger.info(f"Пользователь {user_id} является дарителем в слоте {slot_id}")
-                    return False
+            for slot in existing_slots:
+                slot_id, giver_id, receiver_id = slot
                 
-                if receiver_id is not None:
-                    logger.info(f"Слот {slot_id} уже занят получателем {receiver_id}")
-                    return False
+                if user_id is not None:
+                    if giver_id == user_id:
+                        logger.info(f"Пользователь {user_id} уже является дарителем в слоте {slot_id}")
+                        return False
+                    
+                    if receiver_id is not None:
+                        logger.info(f"Слот {slot_id} уже занят получателем {receiver_id}")
+                        return False
                 
-                cursor = await db.execute(
-                    """
-                    SELECT id FROM slots 
-                    WHERE day = ? AND time = ? AND status = 'active' 
-                    AND (giver_id = ? OR receiver_id = ?)
-                    """,
-                    (day, time, user_id, user_id)
-                )
-                conflicting_slot = await cursor.fetchone()
-                if conflicting_slot:
-                    logger.info(f"Пользователь {user_id} уже записан на другой слот в это время")
-                    return False
-            else:
-                if receiver_id is not None:
-                    return False
+                if user_id is not None:
+                    cursor = await db.execute(
+                        """
+                        SELECT id FROM slots 
+                        WHERE day = ? AND time = ? AND status = 'active' 
+                        AND (giver_id = ? OR receiver_id = ?)
+                        """,
+                        (day, time, user_id, user_id)
+                    )
+                    conflicting_slot = await cursor.fetchone()
+                    if conflicting_slot:
+                        logger.info(f"Пользователь {user_id} уже записан на другой слот в это время")
+                        return False
+                else:
+                    if receiver_id is not None:
+                        return False
             
-            logger.info(f"Слот {slot_id if existing_slot else 'новый'} доступен для записи")
+            logger.info(f"Слот доступен для записи в {day} {time}")
             return True
     except Exception as e:
         logger.error(f"Ошибка при проверке доступности слота: {e}")
         return False
-
 async def is_cancellation_allowed(slot):
     try:
         slot_datetime = parse_slot_datetime(slot['day'], slot['time'])
