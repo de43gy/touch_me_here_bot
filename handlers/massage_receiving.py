@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 import asyncio
 import logging
 import pytz
+import aiosqlite
+from config import DATABASE_PATH
 
 from aiogram import Bot
 from config import BOT_TOKEN
@@ -221,11 +223,15 @@ async def process_day_selection(callback_query: types.CallbackQuery, state: FSMC
         
         user_id = callback_query.from_user.id
         
-        user_slots = await get_user_slots(user_id)
         user_slot_times = set()
-        for user_slot in user_slots:
-            if user_slot['day'] == day:
-                user_slot_times.add(user_slot['time'])
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            cursor = await db.execute(
+                "SELECT time FROM slots WHERE day = ? AND (giver_id = ? OR receiver_id = ?) AND status = 'active'", 
+                (day, user_id, user_id)
+            )
+            user_slots = await cursor.fetchall()
+            for user_slot in user_slots:
+                user_slot_times.add(user_slot[0])
         
         filtered_slots = []
         for slot in day_slots:

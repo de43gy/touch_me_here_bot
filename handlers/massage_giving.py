@@ -9,6 +9,8 @@ import asyncio
 import logging
 import pytz
 import re
+import aiosqlite
+from config import DATABASE_PATH
 
 from aiogram import Bot
 from config import BOT_TOKEN
@@ -160,13 +162,14 @@ async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
         
         available_slots_count = 0
         
-        user_slots = await get_user_slots(user_id)
-        user_slot_times = set()
-        for slot in user_slots:
-            if slot['day'] == day:
-                user_slot_times.add(slot['time'])
-        
         async with aiosqlite.connect(DATABASE_PATH) as db:
+            cursor = await db.execute(
+                "SELECT time FROM slots WHERE day = ? AND giver_id = ? AND status = 'active'", 
+                (day, user_id)
+            )
+            user_slots = await cursor.fetchall()
+            user_slot_times = set([slot[0] for slot in user_slots])
+            
             cursor = await db.execute(
                 "SELECT time FROM slots WHERE day = ? AND status = 'active'",
                 (day,)
