@@ -3,7 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.filters.state import State, StatesGroup
 from keyboards import main_menu
 from database import get_user_slots, cancel_slot, get_slot_by_id
-from utils import format_slot_info, is_cancellation_allowed
+from utils import format_slot_info, is_cancellation_allowed, get_current_moscow_time, parse_slot_datetime
 from datetime import datetime, timedelta
 import logging
 from aiogram import Bot
@@ -26,29 +26,18 @@ async def show_user_slots(message: types.Message, state: FSMContext):
         return
 
     markup = types.InlineKeyboardMarkup(inline_keyboard=[])
+    now = get_current_moscow_time()
+    
     for slot in user_slots:
         slot_info = await format_slot_info(slot)
-        
-        # Преобразуем номер дня в формат "01", "02" и т.д.
-        day_number = slot['day'].split()[1].zfill(2)
-        
-        # Форматируем время
-        time_str = slot['time']
-        if len(time_str) == 2:  # Если время в формате "12", добавляем ":00"
-            time_str = f"{time_str}:00"
+        slot_datetime = parse_slot_datetime(slot['day'], slot['time'])
             
-        try:
-            slot_datetime = datetime.strptime(f"{day_number} {time_str}", "%d %H:%M")
-            
-            if slot_datetime > datetime.now():
-                button = types.InlineKeyboardButton(text=slot_info, callback_data=f"cancel:{slot['id']}")
-                markup.inline_keyboard.append([button])
-            else:
-                button = types.InlineKeyboardButton(text=f"{slot_info} (время слота прошло)", callback_data="ignore")
-                markup.inline_keyboard.append([button])
-        except ValueError as e:
-            logger.error(f"Ошибка при парсинге даты/времени: {e}")
-            continue
+        if slot_datetime and slot_datetime > now:
+            button = types.InlineKeyboardButton(text=slot_info, callback_data=f"cancel:{slot['id']}")
+            markup.inline_keyboard.append([button])
+        else:
+            button = types.InlineKeyboardButton(text=f"{slot_info} (время слота прошло)", callback_data="ignore")
+            markup.inline_keyboard.append([button])
 
     if not markup.inline_keyboard:
         await message.answer("У вас нет активных записей.", reply_markup=main_menu)
@@ -70,7 +59,9 @@ async def handle_cancel_slot(callback_query: types.CallbackQuery, state: FSMCont
     if not await is_cancellation_allowed(slot):
         await callback_query.message.edit_text(
             "Извините, отмена записи возможна не позднее, чем за 30 минут до начала.",
-            reply_markup=main_menu
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+                types.InlineKeyboardButton(text="← Назад", callback_data="back_to_main")
+            ]])
         )
         await state.clear()
         return
@@ -83,7 +74,12 @@ async def handle_cancel_slot(callback_query: types.CallbackQuery, state: FSMCont
         other_user_id = slot['giver_id']
 
     await cancel_slot(slot_id, canceled_by)
-    await callback_query.message.edit_text("Запись успешно отменена.", reply_markup=main_menu)
+    await callback_query.message.edit_text(
+        "Запись успешно отменена.", 
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+            types.InlineKeyboardButton(text="Вернуться в главное меню", callback_data="back_to_main")
+        ]])
+    )
     
     if other_user_id:
         try:
@@ -99,3 +95,15 @@ async def handle_cancel_slot(callback_query: types.CallbackQuery, state: FSMCont
 @router.callback_query(Cancel.confirm_cancellation, F.data == "ignore")
 async def handle_ignore(callback_query: types.CallbackQuery):
     await callback_query.answer("Это время уже прошло.")
+    
+@router.callback_query(F.data == "back_to_main")
+async def back_to_main_menu(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    await state.clear()
+    
+    await callback_query.message.answer("Вы вернулись в главное меню", reply_markup=main_menu)
+    
+    try:
+        await callback_query.message.delete()
+    except Exception as e:
+        logger.error(f"Ошибка при удалении сообщения: {e}")

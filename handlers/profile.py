@@ -3,9 +3,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from keyboards import main_menu
 from database import get_user_slots, get_slot_by_id
-from utils import format_slot_info
+from utils import format_slot_info, get_current_moscow_time, parse_slot_datetime
 import logging
-from datetime import datetime
 
 from aiogram import Bot
 from config import BOT_TOKEN
@@ -28,17 +27,23 @@ async def show_profile(message: types.Message):
         return
 
     markup = types.InlineKeyboardMarkup(inline_keyboard=[])
+    now = get_current_moscow_time()
+    
     for slot in user_slots:
         slot_info = await format_slot_info(slot)
-        slot_datetime = datetime.strptime(f"{slot['day']} {slot['time']}", "%d %B %H:%M")
-        if slot_datetime > datetime.now():
+        slot_datetime = parse_slot_datetime(slot['day'], slot['time'])
+        
+        if slot_datetime and slot_datetime > now:
             button = types.InlineKeyboardButton(text=slot_info, callback_data=f"view_slot:{slot['id']}")
             markup.inline_keyboard.append([button])
-
         else:
             button = types.InlineKeyboardButton(text=f"{slot_info} (время слота прошло)", callback_data="ignore")
             markup.inline_keyboard.append([button])
 
+    if not markup.inline_keyboard:
+        await message.answer("У вас нет активных записей.", reply_markup=main_menu)
+        return
+        
     await message.answer("Ваши записи:", reply_markup=markup)
     await Profile.viewing_slot.set()
 

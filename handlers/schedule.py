@@ -3,6 +3,7 @@ from aiogram.filters import Command
 from keyboards import main_menu
 from datetime import datetime
 import logging
+from utils import get_current_moscow_time, parse_slot_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -84,28 +85,15 @@ SCHEDULE_DATA = [
     }
 ]
 
-def get_event_time_end(time_str):
-    if "-" in time_str:
-        return time_str.split("-")[1].strip()
-    return time_str
-
 def is_event_in_future(date_str, time_str):
     try:
-        now = datetime.now()
+        now = get_current_moscow_time()
+        event_datetime = parse_slot_datetime(date_str, time_str)
         
-        day = int(date_str.split()[0])
-        month = date_str.split()[1]
-        month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6, 
-                     "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
-        month_num = month_map.get(month.lower(), 0)
-        
-        end_time = get_event_time_end(time_str)
-        
-        hour, minute = map(int, end_time.split(":"))
-        
-        event_time = datetime(now.year, month_num, day, hour, minute)
-        
-        return event_time > now
+        if not event_datetime:
+            return False
+            
+        return event_datetime > now
     except Exception as e:
         logger.error(f"Ошибка при определении времени события: {e}")
         return True
@@ -113,7 +101,7 @@ def is_event_in_future(date_str, time_str):
 @router.message(F.text == "Расписание кемпа «Трогай тут»")
 async def show_schedule(message: types.Message):
     try:
-        now = datetime.now()
+        now = get_current_moscow_time()
         
         schedule_message = "📅 <b>Расписание кемпа «Трогай тут»</b>\n\n"
         has_future_events = False

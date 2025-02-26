@@ -5,8 +5,11 @@ from aiogram import Bot
 import aiosqlite
 from config import DATABASE_PATH
 import logging
+import pytz
 
 logger = logging.getLogger(__name__)
+
+MOSCOW_TZ = pytz.timezone('Europe/Moscow')
 
 async def send_notification_to_admin(bot: Bot, message: str):
     try:
@@ -74,8 +77,45 @@ async def is_slot_available(day, time, user_id=None):
 
 async def is_cancellation_allowed(slot):
     try:
-        slot_time = datetime.strptime(f"{slot['day']} {slot['time']}", "%d %B %H:%M")
-        return datetime.now() < slot_time - timedelta(minutes=30)
+        day_parts = slot['day'].split()
+        day_num = int(day_parts[0])
+        month_name = day_parts[1]
+        month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
+                    "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
+        month_num = month_map.get(month_name.lower(), 0)
+        
+        time_str = slot['time'].split("-")[0].strip()
+        time_parts = time_str.split(":")
+        hour = int(time_parts[0])
+        minute = int(time_parts[1]) if len(time_parts) > 1 else 0
+        
+        now = datetime.now(MOSCOW_TZ)
+        slot_datetime = datetime(now.year, month_num, day_num, hour, minute, tzinfo=MOSCOW_TZ)
+        
+        return now < slot_datetime - timedelta(minutes=30)
     except Exception as e:
         logger.error(f"Ошибка при проверке возможности отмены слота: {e}")
         return False
+
+def get_current_moscow_time():
+    return datetime.now(MOSCOW_TZ)
+
+def parse_slot_datetime(day, time):
+    try:
+        day_parts = day.split()
+        day_num = int(day_parts[0])
+        month_name = day_parts[1]
+        month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
+                    "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
+        month_num = month_map.get(month_name.lower(), 0)
+        
+        time_str = time.split("-")[0].strip()
+        time_parts = time_str.split(":")
+        hour = int(time_parts[0])
+        minute = int(time_parts[1]) if len(time_parts) > 1 else 0
+        
+        now = datetime.now(MOSCOW_TZ)
+        return datetime(now.year, month_num, day_num, hour, minute, tzinfo=MOSCOW_TZ)
+    except Exception as e:
+        logger.error(f"Ошибка при парсинге даты/времени слота: {e}")
+        return None

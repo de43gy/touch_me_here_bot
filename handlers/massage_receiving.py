@@ -3,10 +3,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.filters.state import State, StatesGroup
 from keyboards import main_menu, reminder_menu
 from database import get_available_slots, book_slot, get_slot_by_id
-from utils import format_slot_info, is_slot_available
+from utils import format_slot_info, is_slot_available, get_current_moscow_time, parse_slot_datetime
 from datetime import datetime, timedelta
 import asyncio
 import logging
+import pytz
 
 from aiogram import Bot
 from config import BOT_TOKEN
@@ -70,7 +71,7 @@ async def show_available_slots_after_confirmation(callback_query: types.Callback
 
     user_id = callback_query.from_user.id
     
-    now = datetime.now()
+    now = get_current_moscow_time()
     filtered_slots = []
     for slot in slots:
         try:
@@ -88,20 +89,9 @@ async def show_available_slots_after_confirmation(callback_query: types.Callback
                 logger.error(f"Некорректный формат дня (начинается с 'День'): {day_str}")
                 continue
                 
-            day_num = int(day_parts[0])
-            month_name = day_parts[1]
-            month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
-                        "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
-            month_num = month_map.get(month_name.lower(), 0)
+            slot_datetime = parse_slot_datetime(slot['day'], slot['time'])
             
-            time_str = slot['time'].split("-")[0].strip()
-            time_parts = time_str.split(":")
-            hour = int(time_parts[0])
-            minute = int(time_parts[1]) if len(time_parts) > 1 else 0
-            
-            slot_datetime = datetime(now.year, month_num, day_num, hour, minute)
-            
-            if slot_datetime > now and await is_slot_available(slot['day'], slot['time'], user_id):
+            if slot_datetime and slot_datetime > now and await is_slot_available(slot['day'], slot['time'], user_id):
                 filtered_slots.append(slot)
         except Exception as e:
             logger.error(f"Ошибка при фильтрации слота: {e}")
@@ -140,21 +130,9 @@ async def process_day_selection(callback_query: types.CallbackQuery, state: FSMC
     for slot in slots:
         if slot['day'] == day:
             try:
-                day_parts = slot['day'].split()
-                day_num = int(day_parts[0])
-                month_name = day_parts[1]
-                month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
-                            "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
-                month_num = month_map.get(month_name.lower(), 0)
+                slot_datetime = parse_slot_datetime(slot['day'], slot['time'])
                 
-                time_str = slot['time'].split("-")[0].strip()
-                time_parts = time_str.split(":")
-                hour = int(time_parts[0])
-                minute = int(time_parts[1]) if len(time_parts) > 1 else 0
-                
-                slot_datetime = datetime(now.year, month_num, day_num, hour, minute)
-                
-                if slot_datetime > now:
+                if slot_datetime and slot_datetime > now:
                     day_slots.append(slot)
             except Exception as e:
                 logger.error(f"Ошибка при фильтрации слота по дню: {e}")
@@ -257,22 +235,10 @@ async def process_comment(message: types.Message, state: FSMContext):
         return
         
     try:
-        now = datetime.now()
-        day_parts = slot['day'].split()
-        day_num = int(day_parts[0])
-        month_name = day_parts[1]
-        month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
-                    "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
-        month_num = month_map.get(month_name.lower(), 0)
+        now = get_current_moscow_time()
+        slot_datetime = parse_slot_datetime(slot['day'], slot['time'])
         
-        time_str = slot['time'].split("-")[0].strip()
-        time_parts = time_str.split(":")
-        hour = int(time_parts[0])
-        minute = int(time_parts[1]) if len(time_parts) > 1 else 0
-        
-        slot_datetime = datetime(now.year, month_num, day_num, hour, minute)
-        
-        if slot_datetime <= now:
+        if not slot_datetime or slot_datetime <= now:
             await message.answer("Извините, этот слот уже прошел.", reply_markup=main_menu)
             await state.clear()
             return
@@ -286,21 +252,15 @@ async def process_comment(message: types.Message, state: FSMContext):
     await bot.send_message(giver_id, f"К вам записались на массаж!\nКомментарий: {comment}")
     
     try:
-        time_str = slot['time'].split("-")[0].strip()
-        time_parts = time_str.split(":")
-        hour = int(time_parts[0])
-        minute = int(time_parts[1]) if len(time_parts) > 1 else 0
+        now = get_current_moscow_time()
+        slot_datetime = parse_slot_datetime(slot['day'], slot['time'])
         
-        day_parts = slot['day'].split()
-        day_num = int(day_parts[0])
-        month_name = day_parts[1]
-        month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
-                    "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
-        month_num = month_map.get(month_name.lower(), 0)
-        
-        now = datetime.now()
-        slot_datetime = datetime(now.year, month_num, day_num, hour, minute)
-        
+        if not slot_datetime:
+            logger.error(f"Не удалось распарсить дату/время слота: {slot['day']} {slot['time']}")
+            await message.answer("Извините, произошла ошибка при обработке времени слота.", reply_markup=main_menu)
+            await state.clear()
+            return
+            
         reminder_time = slot_datetime - timedelta(minutes=30)
         delay = (reminder_time - now).total_seconds()
 

@@ -3,10 +3,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.filters.state import State, StatesGroup
 from keyboards import main_menu, reminder_menu
 from database import add_slot
-from utils import is_slot_available
+from utils import is_slot_available, get_current_moscow_time, parse_slot_datetime
 from datetime import datetime, timedelta
 import asyncio
 import logging
+import pytz
 
 from aiogram import Bot
 from config import BOT_TOKEN
@@ -71,28 +72,25 @@ async def request_day(callback_query: types.CallbackQuery, state: FSMContext):
     
     markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     
-    now = datetime.now()
+    now = get_current_moscow_time()
     
     available_days = []
     for day in SLOTS_SCHEDULE.keys():
         try:
-            day_parts = day.split()
-            day_num = int(day_parts[0])
-            month_name = day_parts[1]
-            month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
-                         "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
-            month_num = month_map.get(month_name.lower(), 0)
-            day_date = datetime(now.year, month_num, day_num)
-            
-            if day_date.date() >= now.date():
+            slot_datetime = parse_slot_datetime(day, "00:00")
+            if slot_datetime and slot_datetime.date() >= now.date():
                 available_days.append(day)
         except Exception as e:
             logger.error(f"Ошибка при обработке даты {day}: {e}")
     
     if not available_days:
+        inline_markup = types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="Вернуться в главное меню", callback_data="back_to_main")]
+        ])
+        
         await callback_query.message.edit_text(
             "К сожалению, мероприятие уже закончилось и запись не доступна.", 
-            reply_markup=main_menu
+            reply_markup=inline_markup
         )
         await state.clear()
         return
@@ -122,20 +120,9 @@ async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
     available_slots_count = 0
     
     for time in times:
-        time_parts = time.split("-")[0].strip().split(":")
-        slot_hour = int(time_parts[0])
-        slot_minute = int(time_parts[1]) if len(time_parts) > 1 else 0
+        slot_datetime = parse_slot_datetime(day, time)
         
-        day_parts = day.split()
-        day_num = int(day_parts[0])
-        month_name = day_parts[1]
-        month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
-                     "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
-        month_num = month_map.get(month_name.lower(), 0)
-        
-        slot_datetime = datetime(now.year, month_num, day_num, slot_hour, slot_minute)
-        
-        if slot_datetime <= now:
+        if not slot_datetime or slot_datetime <= now:
             continue
             
         if await is_slot_available(day, time, user_id):
@@ -215,20 +202,14 @@ async def process_comment(message: types.Message, state: FSMContext):
         )
         
         try:
-            time_parts = time.split("-")[0].strip().split(":")
-            hour = int(time_parts[0])
-            minute = int(time_parts[1]) if len(time_parts) > 1 else 0
+            now = get_current_moscow_time()
+            slot_datetime = parse_slot_datetime(day, time)
             
-            day_parts = day.split()
-            day_num = int(day_parts[0])
-            month_name = day_parts[1]
-            month_map = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
-                        "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
-            month_num = month_map.get(month_name.lower(), 0)
-            
-            now = datetime.now()
-            slot_datetime = datetime(now.year, month_num, day_num, hour, minute)
-            
+            if not slot_datetime or slot_datetime <= now:
+                await message.answer("Извините, это время уже прошло.", reply_markup=main_menu)
+                await state.clear()
+                return
+                
             reminder_time = slot_datetime - timedelta(minutes=30)
             delay = (reminder_time - now).total_seconds()
 
