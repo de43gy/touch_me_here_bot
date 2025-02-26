@@ -38,10 +38,12 @@ async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
     day = callback_query.data.split(":")[1]
     await state.update_data(day=day)
 
+    user_id = callback_query.from_user.id
     markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     times = ["12:00", "12:30", "13:00", "13:30"]
+    
     for time in times:
-        if await is_slot_available(day, time):
+        if await is_slot_available(day, time, user_id):
             button = types.InlineKeyboardButton(text=time, callback_data=f"give_time:{time}")
             markup.inline_keyboard.append([button])
         else:
@@ -73,8 +75,17 @@ async def process_comment(message: types.Message, state: FSMContext):
         data = await state.get_data()
         day = data.get("day")
         time = data.get("time")
+        user_id = message.from_user.id
         
-        await add_slot(message.from_user.id, day, time, comment)
+        if not await is_slot_available(day, time, user_id):
+            await message.answer(
+                "К сожалению, этот слот уже занят. Пожалуйста, выберите другое время.",
+                reply_markup=main_menu
+            )
+            await state.clear()
+            return
+        
+        await add_slot(user_id, day, time, comment)
         await message.answer(
             f"Вы записаны на дарение массажа:\nДень: {day}\nВремя: {time}\nКомментарий: {comment}", 
             reply_markup=main_menu

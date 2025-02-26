@@ -27,15 +27,47 @@ async def format_slot_info(slot):
     except Exception as e:
       logger.error(f"Ошибка при форматировании информации о слоте: {e}")
 
-async def is_slot_available(day, time):
+async def is_slot_available(day, time, user_id=None):
+    """
+    Проверяет доступность слота для записи.
+    
+    Args:
+        day: День слота
+        time: Время слота
+        user_id: ID пользователя (для проверки повторной записи)
+        
+    Returns:
+        bool: True если слот доступен, False если занят
+    """
     try:
         async with aiosqlite.connect(DATABASE_PATH) as db:
             cursor = await db.execute(
-                "SELECT id FROM slots WHERE day = ? AND time = ? AND status = 'active' AND receiver_id IS NULL",
+                "SELECT id FROM slots WHERE day = ? AND time = ? AND status = 'active'",
                 (day, time)
             )
             existing_slot = await cursor.fetchone()
-            return existing_slot is None
+            
+            if existing_slot is None:
+                return True
+                
+            if user_id:
+                cursor = await db.execute(
+                    "SELECT id FROM slots WHERE day = ? AND time = ? AND status = 'active' AND giver_id = ?",
+                    (day, time, user_id)
+                )
+                user_slot = await cursor.fetchone()
+                if user_slot:
+                    return False
+                
+                cursor = await db.execute(
+                    "SELECT id FROM slots WHERE day = ? AND time = ? AND status = 'active' AND receiver_id = ?",
+                    (day, time, user_id)
+                )
+                receiver_slot = await cursor.fetchone()
+                if receiver_slot:
+                    return False
+            
+            return False
     except Exception as e:
         logger.error(f"Ошибка при проверке доступности слота: {e}")
         return False
