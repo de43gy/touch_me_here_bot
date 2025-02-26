@@ -1,100 +1,66 @@
-@router.callback_query(ReceiveMassage.confirmation, F.data == "confirm_receive_rules")
-async def show_available_slots_after_confirmation(callback_query: types.CallbackQuery, state: FSMContext):
+from aiogram import types, Router, F
+from aiogram.fsm.context import FSMContext
+from aiogram.filters.state import State, StatesGroup
+from keyboards import main_menu, reminder_menu
+from database import get_available_slots, book_slot, get_slot_by_id
+from utils import format_slot_info, is_slot_available, get_current_moscow_time, parse_slot_datetime, normalize_time_format
+from datetime import datetime, timedelta
+import asyncio
+import logging
+import pytz
+
+from aiogram import Bot
+from config import BOT_TOKEN
+
+logger = logging.getLogger(__name__)
+
+bot = Bot(token=BOT_TOKEN)
+
+class ReceiveMassage(StatesGroup):
+    confirmation = State()
+    day = State()
+    time = State()
+    comment = State()
+
+router = Router()
+
+@router.callback_query(F.data == "back_to_main")
+async def back_to_main_menu(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.answer()
+    await state.clear()
     
-    slots = await get_available_slots()
-    if not slots:
-        inline_markup = types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text="Вернуться в главное меню", callback_data="back_to_main")]
-        ])
+    await callback_query.message.answer("Вы вернулись в главное меню", reply_markup=main_menu)
+    
+    try:
+        await callback_query.message.delete()
+    except Exception as e:
+        logger.error(f"Ошибка при удалении сообщения: {e}")
+
+@router.message(F.text == "/debug_time")
+async def debug_time(message: types.Message):
+    try:
+        now_utc = datetime.now(pytz.UTC)
+        now_moscow = get_current_moscow_time()
         
-        await callback_query.message.edit_text(
-            "К сожалению, сейчас нет доступных слотов для записи.", 
-            reply_markup=inline_markup
-        )
-        await state.clear()
-        return
-
-    user_id = callback_query.from_user.id
-    
-    now = get_current_moscow_time()
-    logger.info(f"Текущее московское время: {now}")
-    
-    logger.info(f"Доступные слоты: {len(slots)}")
-    for i, slot in enumerate(slots):
-        logger.info(f"Слот {i+1}: день={slot.get('day', 'Н/Д')}, время={slot.get('time', 'Н/Д')}")
-    
-    filtered_slots = []
-    for slot in slots:
-        try:
-            if 'day' not in slot or 'time' not in slot:
-                logger.error(f"Слот не содержит необходимых полей day или time: {slot}")
-                continue
-                
-            day_str = slot['day']
-            if not day_str or len(day_str.split()) < 2:
-                logger.error(f"Некорректный формат дня: {day_str}")
-                continue
-            
-            day_parts = day_str.split()
-            if day_parts[0] == 'День':
-                logger.error(f"Некорректный формат дня (начинается с 'День'): {day_str}")
-                continue
-            
-            normalized_time = normalize_time_format(slot['time'])
-            logger.info(f"Нормализованное время слота: {normalized_time} (исходное: {slot['time']})")
-              
-            slot_datetime = parse_slot_datetime(slot['day'], slot['time'])
-            
-            is_future = slot_datetime and slot_datetime > now
-            logger.info(f"Слот в будущем: {is_future}, datetime={slot_datetime}")
-            
-            if not is_future:
-                logger.info(f"Пропущен прошедший слот: {slot['day']} {slot['time']}")
-                continue
-                
-            is_not_self = slot['giver_id'] != user_id
-            logger.info(f"Слот не создан текущим пользователем: {is_not_self}, giver_id={slot['giver_id']}, user_id={user_id}")
-            
-            if not is_not_self:
-                logger.info(f"Пропущен собственный слот: {slot['day']} {slot['time']}")
-                continue
-                
-            receiver_id = slot['receiver_id']
-            if receiver_id is not None:
-                logger.info(f"Пропущен занятый слот: {slot['day']} {slot['time']}, receiver_id={receiver_id}")
-                continue
-                
-            has_conflicts = not await is_slot_available(slot['day'], slot['time'], user_id)
-            logger.info(f"Слот имеет конфликты: {has_conflicts}")
-            
-            if has_conflicts:
-                logger.info(f"Пропущен конфликтующий слот: {slot['day']} {slot['time']}")
-                continue
-            
-            filtered_slots.append(slot)
-            logger.info(f"Добавлен доступный слот: {slot['day']} {slot['time']}")
-        except Exception as e:
-            logger.error(f"Ошибка при фильтрации слота: {e}")
-    
-    if not filtered_slots:
-        inline_markup = types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text="Вернуться в главное меню", callback_data="back_to_main")]
-        ])
+        result = "Отладка времени:\n\n"
+        result += f"UTC: {now_utc}\n"
+        result += f"Московское время: {now_moscow}\n"
+        result += f"Разница: {now_moscow.tzinfo.utcoffset(now_moscow)}\n\n"
         
-        await callback_query.message.edit_text(
-            "К сожалению, все доступные слоты уже прошли или заняты.", 
-            reply_markup=inline_markup
-        )
-        await state.clear()
-        return
-
-    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
-    days = sorted(list(set([slot['day'] for slot in filtered_slots])))
-
-    for day in days:
-        button = types.InlineKeyboardButton(text=day, callback_data=f"receive_day:{day}")
-        markup.inline_keyboard.append([button])
-
-    await callback_query.message.edit_text("Выберите день:", reply_markup=markup)
-    await state.set_state(ReceiveMassage.day)
+        import aiosqlite
+        from config import DATABASE_PATH
+        
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            cursor = await db.execute("SELECT * FROM slots WHERE status = 'active'")
+            rows = await cursor.fetchall()
+            
+            if not rows:
+                result += "Нет активных слотов в базе данных."
+            else:
+                columns = [description[0] for description in cursor.description]
+                result += "Активные слоты:\n\n"
+                
+                for row in rows:
+                    slot = dict(zip(columns, row))
+                    time_value = slot['time']
+                    normalized_time = normalize_time_format(time_
