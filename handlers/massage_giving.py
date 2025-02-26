@@ -170,9 +170,6 @@ async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
                 button = types.InlineKeyboardButton(text=time, callback_data=f"give_time:{time}")
                 markup.inline_keyboard.append([button])
                 available_slots_count += 1
-            else:
-                button = types.InlineKeyboardButton(text=f"{time} (занято)", callback_data="ignore")
-                markup.inline_keyboard.append([button])
         
         markup.inline_keyboard.append([
             types.InlineKeyboardButton(text="← Назад", callback_data="back_to_days")
@@ -189,8 +186,8 @@ async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
 
         await callback_query.message.edit_text(
             f"Вы выбрали день: {day}. Теперь выберите время:\n\n"
-            f"Вы можете делать массаж и меньше часа, просто укажите это в комментарии. \n"
-            f"Пожалуйста не опаздывайте на свой слот дарения массажа 🙏🏻", 
+            f"«Вы можете делать массаж и меньше часа, просто укажите это в комментарии. \n"
+            f"Пожалуйста не опаздывайте на свой слот дарения массажа 🙏🏻»", 
             reply_markup=markup
         )
         await state.set_state(GiveMassage.time)
