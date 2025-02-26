@@ -90,9 +90,6 @@ async def show_available_slots(callback_query: types.CallbackQuery, state: FSMCo
         button = types.InlineKeyboardButton(text=day, callback_data=f"receive_day:{day}")
         markup.inline_keyboard.append([button])
 
-    await callback_query.message.edit_text("Вы можете делать массаж и меньше часа,"
-                                           " просто укажите это в комментарии."
-                                           " Пожалуйста не опаздывайте  на свой слот дарения массажа 🙏🏻", reply_markup=markup)
     await callback_query.message.edit_text("Выберите день:", reply_markup=markup)
     await state.set_state(ReceiveMassage.day)
 
