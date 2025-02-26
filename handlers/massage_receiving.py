@@ -40,7 +40,9 @@ async def show_rules(message: types.Message, state: FSMContext):
     await state.set_state(ReceiveMassage.confirmation)
 
 @router.callback_query(ReceiveMassage.confirmation, F.data == "confirm_receive_rules")
-async def show_available_slots(callback_query: types.CallbackQuery, state: FSMContext):
+async def show_available_slots_after_confirmation(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    
     slots = await get_available_slots()
     if not slots:
         await callback_query.message.edit_text(
@@ -157,13 +159,13 @@ async def process_day_selection(callback_query: types.CallbackQuery, state: FSMC
 
 @router.callback_query(ReceiveMassage.day, F.data == "back_to_days")
 async def back_to_days(callback_query: types.CallbackQuery, state: FSMContext):
-    await show_available_slots(callback_query, state)
     await callback_query.answer()
+    await show_rules(callback_query.message, state)
 
 @router.callback_query(ReceiveMassage.time, F.data == "back_to_days")
 async def back_to_days_from_time(callback_query: types.CallbackQuery, state: FSMContext):
-    await show_available_slots(callback_query, state)
     await callback_query.answer()
+    await show_rules(callback_query.message, state)
 
 @router.callback_query(ReceiveMassage.time)
 async def process_time_selection(callback_query: types.CallbackQuery, state: FSMContext):

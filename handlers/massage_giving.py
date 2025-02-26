@@ -55,6 +55,8 @@ async def show_rules(message: types.Message, state: FSMContext):
 
 @router.callback_query(GiveMassage.confirmation, F.data == "confirm_give_rules")
 async def request_day(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    
     markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     
     now = datetime.now()
