@@ -107,45 +107,52 @@ async def request_day(callback_query: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(GiveMassage.day)
 async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
-    day = callback_query.data.split(":")[1]
-    await state.update_data(day=day)
-
-    user_id = callback_query.from_user.id
-    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
-    
-    times = SLOTS_SCHEDULE.get(day, [])
-    
-    now = datetime.now()
-    
-    available_slots_count = 0
-    
-    for time in times:
-        slot_datetime = parse_slot_datetime(day, time)
-        
-        if not slot_datetime or slot_datetime <= now:
-            continue
-            
-        if await is_slot_available(day, time, user_id):
-            button = types.InlineKeyboardButton(text=time, callback_data=f"give_time:{time}")
-            markup.inline_keyboard.append([button])
-            available_slots_count += 1
-        else:
-            button = types.InlineKeyboardButton(text=f"{time} (занято)", callback_data="ignore")
-            markup.inline_keyboard.append([button])
-    
-    if available_slots_count == 0:
-        await callback_query.message.edit_text(
-            f"На {day} нет доступных слотов. Выберите другой день или попробуйте позже.",
-            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
-                types.InlineKeyboardButton(text="← Назад", callback_data="back_to_days")
-            ]])
-        )
-        await callback_query.answer()
-        return
-
-    await callback_query.message.edit_text(f"Вы выбрали день: {day}. Теперь выберите время:", reply_markup=markup)
-    await state.set_state(GiveMassage.time)
     await callback_query.answer()
+    
+    if callback_query.data.startswith("give_day:"):
+        day = callback_query.data.split(":")[1]
+        await state.update_data(day=day)
+
+        user_id = callback_query.from_user.id
+        markup = types.InlineKeyboardMarkup(inline_keyboard=[])
+        
+        times = SLOTS_SCHEDULE.get(day, [])
+        
+        now = get_current_moscow_time()
+        
+        available_slots_count = 0
+        
+        for time in times:
+            slot_datetime = parse_slot_datetime(day, time)
+            
+            if not slot_datetime or slot_datetime <= now:
+                continue
+                
+            if await is_slot_available(day, time, user_id):
+                button = types.InlineKeyboardButton(text=time, callback_data=f"give_time:{time}")
+                markup.inline_keyboard.append([button])
+                available_slots_count += 1
+            else:
+                button = types.InlineKeyboardButton(text=f"{time} (занято)", callback_data="ignore")
+                markup.inline_keyboard.append([button])
+        
+        markup.inline_keyboard.append([
+            types.InlineKeyboardButton(text="← Назад", callback_data="back_to_days")
+        ])
+        
+        if available_slots_count == 0:
+            await callback_query.message.edit_text(
+                f"На {day} нет доступных слотов. Выберите другой день или попробуйте позже.",
+                reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+                    types.InlineKeyboardButton(text="← Назад", callback_data="back_to_days")
+                ]])
+            )
+            return
+
+        await callback_query.message.edit_text(f"Вы выбрали день: {day}. Теперь выберите время:", reply_markup=markup)
+        await state.set_state(GiveMassage.time)
+    elif callback_query.data == "back_to_days":
+        await back_to_days(callback_query, state)
 
 @router.callback_query(GiveMassage.day, F.data == "back_to_days")
 async def back_to_days(callback_query: types.CallbackQuery, state: FSMContext):
@@ -168,15 +175,20 @@ async def back_to_days(callback_query: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(GiveMassage.time)
 async def process_time(callback_query: types.CallbackQuery, state: FSMContext):
-    if callback_query.data == "ignore":
-        await callback_query.answer("Это время уже занято.")
-        return
-        
-    time = callback_query.data.split(":")[1]
-    await state.update_data(time=time)
-    await callback_query.message.edit_text("Напишите комментарий к своему предложению массажа (необязательно):")
-    await state.set_state(GiveMassage.comment)
     await callback_query.answer()
+    
+    if callback_query.data == "ignore":
+        return
+    elif callback_query.data == "back_to_days":
+        data = await state.get_data()
+        day = data.get("day")
+        await process_day(callback_query, state)
+        return
+    elif callback_query.data.startswith("give_time:"):  
+        time = callback_query.data.split(":")[1]
+        await state.update_data(time=time)
+        await callback_query.message.edit_text("Напишите комментарий к своему предложению массажа (необязательно):")
+        await state.set_state(GiveMassage.comment)
 
 @router.message(GiveMassage.comment)
 async def process_comment(message: types.Message, state: FSMContext):
@@ -195,6 +207,14 @@ async def process_comment(message: types.Message, state: FSMContext):
             await state.clear()
             return
         
+        now = get_current_moscow_time()
+        slot_datetime = parse_slot_datetime(day, time)
+        
+        if not slot_datetime or slot_datetime <= now:
+            await message.answer("Извините, это время уже прошло.", reply_markup=main_menu)
+            await state.clear()
+            return
+        
         await add_slot(user_id, day, time, comment)
         await message.answer(
             f"Вы записаны на дарение массажа:\nДень: {day}\nВремя: {time}\nКомментарий: {comment}", 
@@ -202,14 +222,7 @@ async def process_comment(message: types.Message, state: FSMContext):
         )
         
         try:
-            now = get_current_moscow_time()
-            slot_datetime = parse_slot_datetime(day, time)
-            
-            if not slot_datetime or slot_datetime <= now:
-                await message.answer("Извините, это время уже прошло.", reply_markup=main_menu)
-                await state.clear()
-                return
-                
+            # Создаем напоминание за 30 минут
             reminder_time = slot_datetime - timedelta(minutes=30)
             delay = (reminder_time - now).total_seconds()
 
