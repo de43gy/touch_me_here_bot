@@ -166,6 +166,7 @@ async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
             if not slot_datetime or slot_datetime <= now:
                 continue
                 
+            # Форматирование времени для отображения
             display_time = time
             if "-" in time:
                 start_time, end_time = time.split("-")
@@ -271,6 +272,7 @@ async def process_comment(message: types.Message, state: FSMContext):
         
         await add_slot(user_id, day, time, comment)
         
+        # Форматирование времени для отображения
         display_time = time
         if "-" in time:
             start_time, end_time = time.split("-")
@@ -302,15 +304,6 @@ async def process_comment(message: types.Message, state: FSMContext):
                 )
         except Exception as e:
             logger.error(f"Ошибка при создании напоминания: {e}")
-            
-    except Exception as e:
-        logger.error(f"Ошибка при создании слота: {e}")
-        await message.answer(
-            "Произошла ошибка при создании слота. Пожалуйста, попробуйте еще раз.",
-            reply_markup=main_menu
-        )
-    finally:
-        await state.clear()
             
     except Exception as e:
         logger.error(f"Ошибка при создании слота: {e}")
