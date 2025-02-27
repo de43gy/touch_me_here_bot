@@ -3,7 +3,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.filters.state import State, StatesGroup
 from keyboards import main_menu, reminder_menu
 from database import add_slot
-from utils import is_slot_available, get_current_moscow_time, parse_slot_datetime, normalize_time_format
+from utils import (
+    is_slot_available, 
+    get_current_moscow_time, 
+    parse_slot_datetime, 
+    normalize_time_format,
+    get_time_for_comparison,
+    get_hour_for_comparison
+)
 from datetime import datetime, timedelta
 import asyncio
 import logging
@@ -168,24 +175,34 @@ async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
                 (day, user_id)
             )
             user_slots = await cursor.fetchall()
-            user_slot_times = set([slot[0] for slot in user_slots])
+            user_slot_times = [slot[0] for slot in user_slots]
             
-            cursor = await db.execute(
-                "SELECT time FROM slots WHERE day = ? AND status = 'active'",
-                (day,)
-            )
-            existing_slots = await cursor.fetchall()
-            existing_slot_times = set([slot[0] for slot in existing_slots])
+            user_slot_hours = []
+            for slot_time in user_slot_times:
+                user_slot_hours.append(get_hour_for_comparison(slot_time))
+            
+            logger.info(f"Слоты пользователя {user_id} на {day}: {user_slot_times}")
+            logger.info(f"Часы слотов пользователя: {user_slot_hours}")
         
         for time in times:
             slot_datetime = parse_slot_datetime(day, time)
             
             if not slot_datetime or slot_datetime <= now:
+                logger.info(f"Пропускаем {time} - слот в прошлом")
                 continue
                 
-            if time in user_slot_times:
+            normalized_time = normalize_time_format(time)
+            time_for_comparison = get_time_for_comparison(time)
+            hour_for_comparison = get_hour_for_comparison(time)
+            
+            if time in user_slot_times or normalized_time in user_slot_times or time_for_comparison in user_slot_times:
+                logger.info(f"Пропускаем время {time} - точное совпадение с существующей записью пользователя")
                 continue
-                
+            
+            if hour_for_comparison in user_slot_hours:
+                logger.info(f"Пропускаем время {time} - совпадение по часу с существующей записью пользователя")
+                continue
+            
             display_time = time
             if "-" in time:
                 start_time, end_time = time.split("-")
@@ -201,6 +218,7 @@ async def process_day(callback_query: types.CallbackQuery, state: FSMContext):
                 button = types.InlineKeyboardButton(text=display_time, callback_data=f"give_time:{time}")
                 markup.inline_keyboard.append([button])
                 available_slots_count += 1
+                logger.info(f"Добавлен доступный слот: {display_time}")
         
         markup.inline_keyboard.append([
             types.InlineKeyboardButton(text="← Назад", callback_data="back_to_days")
@@ -261,75 +279,94 @@ async def process_time(callback_query: types.CallbackQuery, state: FSMContext):
         await callback_query.message.edit_text("Напишите комментарий к своему предложению массажа (необязательно):")
         await state.set_state(GiveMassage.comment)
 
-@router.message(GiveMassage.comment)
+@router.message(ReceiveMassage.comment)
 async def process_comment(message: types.Message, state: FSMContext):
     try:
         comment = message.text if message.text else ""
         data = await state.get_data()
-        day = data.get("day")
-        time = data.get("time")
+        slot_id = data.get("slot_id")
         user_id = message.from_user.id
-        
-        if not await is_slot_available(day, time, user_id):
+
+        slot = await get_slot_by_id(slot_id)
+        if not slot:
+            await message.answer("Извините, слот был занят или удален.", reply_markup=main_menu)
+            await state.clear()
+            return
+            
+        if slot['receiver_id'] is not None:
+            await message.answer("Извините, этот слот уже занят другим пользователем.", reply_markup=main_menu)
+            await state.clear()
+            return
+            
+        if slot['giver_id'] == user_id:
+            await message.answer("Извините, вы не можете записаться на собственный слот массажа.", reply_markup=main_menu)
+            await state.clear()
+            return
+            
+        if not await is_slot_available(slot['day'], slot['time'], user_id):
             await message.answer(
-                "К сожалению, этот слот уже занят. Пожалуйста, выберите другое время.",
+                "У вас уже есть запись на это время. Пожалуйста, выберите другое время.",
                 reply_markup=main_menu
             )
             await state.clear()
             return
         
-        now = get_current_moscow_time()
-        slot_datetime = parse_slot_datetime(day, time)
+        try:
+            now = get_current_moscow_time()
+            slot_datetime = parse_slot_datetime(slot['day'], slot['time'])
+            
+            if not slot_datetime or slot_datetime <= now:
+                await message.answer("Извините, этот слот уже прошел.", reply_markup=main_menu)
+                await state.clear()
+                return
+        except Exception as e:
+            logger.error(f"Ошибка при проверке времени слота: {e}")
+
+        await book_slot(slot_id, user_id, comment)
         
-        if not slot_datetime or slot_datetime <= now:
-            await message.answer("Извините, это время уже прошло.", reply_markup=main_menu)
-            await state.clear()
-            return
-        
-        normalized_time = normalize_time_format(time)
-        logger.info(f"Сохраняем слот с нормализованным временем: {normalized_time} (исходное: {time})")
-        
-        await add_slot(user_id, day, time, comment)
-        
-        # Форматирование времени для отображения
-        display_time = time
-        if "-" in time:
-            start_time, end_time = time.split("-")
+        time_str = slot['time']
+        display_time = time_str
+        if "-" in time_str:
+            start_time, end_time = time_str.split("-")
             if ":" not in start_time.strip():
                 start_time = f"{start_time.strip()}:00"
             if ":" not in end_time.strip():
                 end_time = f"{end_time.strip()}:00"
             display_time = f"{start_time.strip()}-{end_time.strip()}"
-        elif ":" not in time:
-            display_time = f"{time}:00"
+        elif ":" not in time_str:
+            display_time = f"{time_str}:00"
+            
+        formatted_slot_info = await format_slot_info(slot)
+        if time_str != display_time:
+            formatted_slot_info = formatted_slot_info.replace(time_str, display_time)
+            
+        await message.answer(f"Вы записаны на получение массажа!\n{formatted_slot_info}", reply_markup=main_menu)
         
-        await message.answer(
-            f"Вы записаны на дарение массажа:\nДень: {day}\nВремя: {display_time}\nКомментарий: {comment}", 
-            reply_markup=main_menu
-        )
+        giver_id = slot['giver_id']
+        await bot.send_message(giver_id, f"К вам записались на массаж!\nДень: {slot['day']}\nВремя: {display_time}\nКомментарий: {comment}")
         
         try:
+            now = get_current_moscow_time()
+            slot_datetime = parse_slot_datetime(slot['day'], slot['time'])
+            
+            if not slot_datetime:
+                logger.error(f"Не удалось распарсить дату/время слота: {slot['day']} {slot['time']}")
+                await message.answer("Извините, произошла ошибка при обработке времени слота.", reply_markup=main_menu)
+                await state.clear()
+                return
+                
             reminder_time = slot_datetime - timedelta(minutes=30)
             delay = (reminder_time - now).total_seconds()
 
             if delay > 0:
-                asyncio.create_task(
-                    schedule_reminder(message.from_user.id, message.from_user.username, day, time, "giver", delay)
-                )
+                asyncio.create_task(schedule_reminder(message.from_user.id, message.from_user.username, slot['day'], slot['time'], "receiver", delay))
             else:
-                logger.warning(
-                    f"Пропущено напоминание для пользователя {message.from_user.username} "
-                    f"(ID: {message.from_user.id}), время: {day} {time}"
-                )
+                logger.warning(f"Пропущено напоминание для пользователя {message.from_user.username} (ID: {message.from_user.id}), время: {slot['day']} {slot['time']}")
         except Exception as e:
             logger.error(f"Ошибка при создании напоминания: {e}")
-            
     except Exception as e:
-        logger.error(f"Ошибка при создании слота: {e}")
-        await message.answer(
-            "Произошла ошибка при создании слота. Пожалуйста, попробуйте еще раз.",
-            reply_markup=main_menu
-        )
+        logger.error(f"Ошибка при бронировании слота: {e}")
+        await message.answer("Произошла ошибка при бронировании слота. Пожалуйста, попробуйте еще раз.", reply_markup=main_menu)
     finally:
         await state.clear()
 

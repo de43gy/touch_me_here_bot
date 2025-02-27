@@ -3,7 +3,15 @@ from aiogram.fsm.context import FSMContext
 from aiogram.filters.state import State, StatesGroup
 from keyboards import main_menu, reminder_menu
 from database import get_available_slots, book_slot, get_slot_by_id
-from utils import format_slot_info, is_slot_available, get_current_moscow_time, parse_slot_datetime, normalize_time_format
+from utils import (
+    format_slot_info, 
+    is_slot_available, 
+    get_current_moscow_time, 
+    parse_slot_datetime, 
+    normalize_time_format,
+    get_time_for_comparison,
+    get_hour_for_comparison
+)
 from datetime import datetime, timedelta
 import asyncio
 import logging
@@ -223,22 +231,32 @@ async def process_day_selection(callback_query: types.CallbackQuery, state: FSMC
         
         user_id = callback_query.from_user.id
         
-        user_slot_times = set()
         async with aiosqlite.connect(DATABASE_PATH) as db:
             cursor = await db.execute(
                 "SELECT time FROM slots WHERE day = ? AND (giver_id = ? OR receiver_id = ?) AND status = 'active'", 
                 (day, user_id, user_id)
             )
             user_slots = await cursor.fetchall()
-            for user_slot in user_slots:
-                user_slot_times.add(user_slot[0])
+            user_slot_times = [slot[0] for slot in user_slots]
+            
+            user_slot_hours = []
+            for slot_time in user_slot_times:
+                user_slot_hours.append(get_hour_for_comparison(slot_time))
+                
+            logger.info(f"Слоты пользователя {user_id} на {day}: {user_slot_times}")
+            logger.info(f"Часы слотов пользователя: {user_slot_hours}")
         
         filtered_slots = []
         for slot in day_slots:
             slot_time = slot['time']
             normalized_time = normalize_time_format(slot_time)
+            time_for_comparison = get_time_for_comparison(slot_time)
+            hour_for_comparison = get_hour_for_comparison(slot_time)
             
-            if slot_time in user_slot_times or normalized_time in user_slot_times:
+            if (slot_time in user_slot_times or 
+                normalized_time in user_slot_times or 
+                time_for_comparison in user_slot_times or
+                hour_for_comparison in user_slot_hours):
                 logger.info(f"Пропускаем слот на время {slot_time} - пользователь {user_id} уже записан")
                 continue
             
@@ -255,6 +273,7 @@ async def process_day_selection(callback_query: types.CallbackQuery, state: FSMC
                 continue
                 
             filtered_slots.append(slot)
+            logger.info(f"Добавлен доступный слот для получения массажа: {slot['day']} {slot_time}")
         
         if not filtered_slots:
             await callback_query.message.edit_text(
@@ -267,7 +286,21 @@ async def process_day_selection(callback_query: types.CallbackQuery, state: FSMC
 
         markup = types.InlineKeyboardMarkup(inline_keyboard=[])
         for slot in filtered_slots:
+            display_time = slot['time']
+            if "-" in display_time:
+                start_time, end_time = display_time.split("-")
+                if ":" not in start_time.strip():
+                    start_time = f"{start_time.strip()}:00"
+                if ":" not in end_time.strip():
+                    end_time = f"{end_time.strip()}:00"
+                display_time = f"{start_time.strip()}-{end_time.strip()}"
+            elif ":" not in display_time:
+                display_time = f"{display_time}:00"
+            
             slot_info = await format_slot_info(slot)
+            if slot['time'] != display_time:
+                slot_info = slot_info.replace(slot['time'], display_time)
+                
             button = types.InlineKeyboardButton(text=slot_info, callback_data=f"receive_time:{slot['id']}")
             markup.inline_keyboard.append([button])
         
