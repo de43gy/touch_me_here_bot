@@ -101,7 +101,12 @@ async def back_to_main_menu(callback_query: types.CallbackQuery, state: FSMConte
     await callback_query.answer()
     await state.clear()
     
-    await callback_query.message.answer("Вы вернулись в главное меню", reply_markup=main_menu)
+    await callback_query.message.answer(
+        "<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+        "Вы вернулись в главное меню", 
+        reply_markup=main_menu,
+        parse_mode="HTML"
+    )
     
     try:
         await callback_query.message.delete()

@@ -39,7 +39,12 @@ async def back_to_main_menu(callback_query: types.CallbackQuery, state: FSMConte
     await callback_query.answer()
     await state.clear()
     
-    await callback_query.message.answer("Вы вернулись в главное меню", reply_markup=main_menu)
+    await callback_query.message.answer(
+        "<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+        "Вы вернулись в главное меню", 
+        reply_markup=main_menu,
+        parse_mode="HTML"
+    )
     
     try:
         await callback_query.message.delete()
@@ -413,10 +418,20 @@ async def process_comment(message: types.Message, state: FSMContext):
             display_time = time_str
             
         formatted_slot_info = await format_slot_info(slot)
-        await message.answer(f"Вы записаны на получение массажа!\n{formatted_slot_info}\nВремя: {display_time}", reply_markup=main_menu)
+        await message.answer(
+            f"<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+            f"Вы записаны на получение массажа!\n{formatted_slot_info}\nВремя: {display_time}", 
+            reply_markup=main_menu,
+            parse_mode="HTML"
+        )
         
         giver_id = slot['giver_id']
-        await bot.send_message(giver_id, f"К вам записались на массаж!\nДень: {slot['day']}\nВремя: {display_time}\nКомментарий: {comment}")
+        await bot.send_message(
+            giver_id, 
+            f"<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+            f"К вам записались на массаж!\nДень: {slot['day']}\nВремя: {display_time}\nКомментарий: {comment}",
+            parse_mode="HTML"
+        )
         
         try:
             now = get_current_moscow_time()
@@ -458,7 +473,7 @@ async def schedule_reminder(user_id: int, username: str, day: str, time: str, ro
         display_time = f"{time}:00"
     
     if role == "giver":
-        text = f"Я помню, что через 30 минут делаю массаж в «Трогай тут (корпус , этаж)» ({day}, {display_time}) и приду его делать 👌🏻"
+        text = f"Я помню, что через 30 минут делаю массаж в «Трогай тут» (📍 Салют 1 корпус 3 этаж) ({day}, {display_time}) и приду его делать 👌🏻"
     elif role == "receiver":
-        text = f"Я помню, что через 30 минут получаю массаж в «Трогай тут (корпус , этаж)» ({day}, {display_time}) и приду его получать 👌🏻"
+        text = f"Я помню, что через 30 минут получаю массаж в «Трогай тут» (📍 Салют 1 корпус 3 этаж) ({day}, {display_time}) и приду его получать 👌🏻"
     await bot.send_message(user_id, text, reply_markup=reminder_menu)

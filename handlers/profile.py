@@ -20,10 +20,15 @@ class Profile(StatesGroup):
     viewing_slot = State()
 
 @router.message(F.text == "Мои записи")
-async def show_profile(message: types.Message):
+async def show_profile(message: types.Message, state: FSMContext):
     user_slots = await get_user_slots(message.from_user.id)
     if not user_slots:
-        await message.answer("У вас нет активных записей.", reply_markup=main_menu)
+        await message.answer(
+            "<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+            "У вас нет активных записей.", 
+            reply_markup=main_menu,
+            parse_mode="HTML"
+        )
         return
 
     markup = types.InlineKeyboardMarkup(inline_keyboard=[])
@@ -41,11 +46,21 @@ async def show_profile(message: types.Message):
             markup.inline_keyboard.append([button])
 
     if not markup.inline_keyboard:
-        await message.answer("У вас нет активных записей.", reply_markup=main_menu)
+        await message.answer(
+            "<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+            "У вас нет активных записей.", 
+            reply_markup=main_menu,
+            parse_mode="HTML"
+        )
         return
         
-    await message.answer("Ваши записи:", reply_markup=markup)
-    await Profile.viewing_slot.set()
+    await message.answer(
+        "<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+        "Ваши записи:", 
+        reply_markup=markup,
+        parse_mode="HTML"
+    )
+    await state.set_state(Profile.viewing_slot)
 
 @router.callback_query(Profile.viewing_slot, F.data.startswith("view_slot:"))
 async def read_receiver_comment(callback_query: types.CallbackQuery, state: FSMContext):
