@@ -235,11 +235,26 @@ async def process_day_selection(callback_query: types.CallbackQuery, state: FSMC
         
         filtered_slots = []
         for slot in day_slots:
-            if slot['time'] in user_slot_times:
+            slot_time = slot['time']
+            normalized_time = normalize_time_format(slot_time)
+            
+            if slot_time in user_slot_times or normalized_time in user_slot_times:
+                logger.info(f"Пропускаем слот на время {slot_time} - пользователь {user_id} уже записан")
                 continue
             
-            if slot['giver_id'] != user_id and slot['receiver_id'] is None and await is_slot_available(slot['day'], slot['time'], user_id):
-                filtered_slots.append(slot)
+            if slot['giver_id'] == user_id:
+                logger.info(f"Пропускаем слот на время {slot_time} - пользователь {user_id} является дарителем")
+                continue
+                
+            if slot['receiver_id'] is not None:
+                logger.info(f"Пропускаем слот на время {slot_time} - слот уже имеет получателя {slot['receiver_id']}")
+                continue
+                
+            if not await is_slot_available(slot['day'], slot['time'], user_id):
+                logger.info(f"Пропускаем слот на время {slot_time} - слот недоступен по результатам проверки is_slot_available")
+                continue
+                
+            filtered_slots.append(slot)
         
         if not filtered_slots:
             await callback_query.message.edit_text(
