@@ -40,7 +40,7 @@ async def back_to_main_menu(callback_query: types.CallbackQuery, state: FSMConte
     await state.clear()
     
     await callback_query.message.answer(
-        "<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+        "<b>📍 Дружба корпус 1 второй этаж</b>\n\n"
         "Вы вернулись в главное меню", 
         reply_markup=main_menu,
         parse_mode="HTML"
@@ -419,7 +419,7 @@ async def process_comment(message: types.Message, state: FSMContext):
             
         formatted_slot_info = await format_slot_info(slot)
         await message.answer(
-            f"<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+            f"<b>📍 Дружба корпус 1 второй этаж</b>\n\n"
             f"Вы записаны на получение массажа!\n{formatted_slot_info}\nВремя: {display_time}", 
             reply_markup=main_menu,
             parse_mode="HTML"
@@ -428,7 +428,7 @@ async def process_comment(message: types.Message, state: FSMContext):
         giver_id = slot['giver_id']
         await bot.send_message(
             giver_id, 
-            f"<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+            f"<b>📍 Дружба корпус 1 второй этаж</b>\n\n"
             f"К вам записались на массаж!\nДень: {slot['day']}\nВремя: {display_time}\nКомментарий: {comment}",
             parse_mode="HTML"
         )
@@ -473,7 +473,7 @@ async def schedule_reminder(user_id: int, username: str, day: str, time: str, ro
         display_time = f"{time}:00"
     
     if role == "giver":
-        text = f"Я помню, что через 30 минут делаю массаж в «Трогай тут» (📍 Салют 1 корпус 3 этаж) ({day}, {display_time}) и приду его делать 👌🏻"
+        text = f"Я помню, что через 30 минут делаю массаж в «Трогай тут» (📍 Дружба корпус 1 второй этаж) ({day}, {display_time}) и приду его делать 👌🏻"
     elif role == "receiver":
-        text = f"Я помню, что через 30 минут получаю массаж в «Трогай тут» (📍 Салют 1 корпус 3 этаж) ({day}, {display_time}) и приду его получать 👌🏻"
+        text = f"Я помню, что через 30 минут получаю массаж в «Трогай тут» (📍 Дружба корпус 1 второй этаж) ({day}, {display_time}) и приду его получать 👌🏻"
     await bot.send_message(user_id, text, reply_markup=reminder_menu)

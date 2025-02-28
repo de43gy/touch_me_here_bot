@@ -13,7 +13,7 @@ async def cmd_start(message: types.Message):
     try:
         await add_user(message.from_user.id, message.from_user.username)
         await message.answer(
-            "<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+            "<b>📍 Дружба корпус 1 второй этаж</b>\n\n"
             "Привет! Я бот TouchHarmony, помогу тебе записаться на массаж или сделать его.",
             reply_markup=main_menu,
             parse_mode="HTML"
@@ -23,11 +23,11 @@ async def cmd_start(message: types.Message):
         logger.error(f"Ошибка в команде /start для пользователя {message.from_user.username} (ID: {message.from_user.id}): {e}")
         await message.answer("Произошла ошибка при обработке команды /start. Пожалуйста, попробуйте позже.")
         
-@router.message(F.text == "📍 Салют 1 корпус 3 этаж")
+@router.message(F.text == "📍 Дружба корпус 1 второй этаж")
 async def show_location(message: types.Message):
     await message.answer(
         "<b>📍 ЛОКАЦИЯ КЕМПА «ТРОГАЙ ТУТ»</b>\n\n"
-        "<b>Салют 1 корпус 3 этаж</b>\n\n"
+        "<b>Дружба корпус 1 второй этаж</b>\n\n"
         "Ждем тебя на массаж в указанное время!",
         parse_mode="HTML",
         reply_markup=main_menu

@@ -23,7 +23,7 @@ async def show_user_slots(message: types.Message, state: FSMContext):
     user_slots = await get_user_slots(message.from_user.id)
     if not user_slots:
         await message.answer(
-            "<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+            "<b>📍 Дружба корпус 1 второй этаж</b>\n\n"
             "У вас нет активных записей.", 
             reply_markup=main_menu,
             parse_mode="HTML"
@@ -46,7 +46,7 @@ async def show_user_slots(message: types.Message, state: FSMContext):
 
     if not markup.inline_keyboard:
         await message.answer(
-            "<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+            "<b>📍 Дружба корпус 1 второй этаж</b>\n\n"
             "У вас нет активных записей.", 
             reply_markup=main_menu,
             parse_mode="HTML"
@@ -54,7 +54,7 @@ async def show_user_slots(message: types.Message, state: FSMContext):
         return
 
     await message.answer(
-        "<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+        "<b>📍 Дружба корпус 1 второй этаж</b>\n\n"
         "Выберите запись для отмены:\n"
         "<i>Нажмите на запись, чтобы отменить её</i>", 
         reply_markup=markup,
@@ -82,7 +82,7 @@ async def handle_cancel_slot(callback_query: types.CallbackQuery, state: FSMCont
     slot_info = await format_slot_info(slot)
     
     await callback_query.message.edit_text(
-        f"<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+        f"<b>📍 Дружба корпус 1 второй этаж</b>\n\n"
         f"Вы уверены, что хотите отменить запись?\n\n"
         f"{slot_info}",
         reply_markup=confirm_markup,
@@ -106,7 +106,7 @@ async def handle_confirm_cancel(callback_query: types.CallbackQuery, state: FSMC
 
     if not await is_cancellation_allowed(slot):
         await callback_query.message.edit_text(
-            "<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+            "<b>📍 Дружба корпус 1 второй этаж</b>\n\n"
             "Извините, отмена записи возможна не позднее, чем за 30 минут до начала.",
             reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
                 types.InlineKeyboardButton(text="← Назад", callback_data="back_to_main")
@@ -125,7 +125,7 @@ async def handle_confirm_cancel(callback_query: types.CallbackQuery, state: FSMC
 
     await cancel_slot(slot_id, canceled_by)
     await callback_query.message.edit_text(
-        "<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+        "<b>📍 Дружба корпус 1 второй этаж</b>\n\n"
         "Запись успешно отменена.", 
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
             types.InlineKeyboardButton(text="Вернуться в главное меню", callback_data="back_to_main")
@@ -137,7 +137,7 @@ async def handle_confirm_cancel(callback_query: types.CallbackQuery, state: FSMC
         try:
             await bot.send_message(
                 other_user_id,
-                f"<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+                f"<b>📍 Дружба корпус 1 второй этаж</b>\n\n"
                 f"Ваша запись на массаж {slot['day']} в {slot['time']} была отменена "
                 f"{'массажистом' if canceled_by == 'giver' else 'получателем'}.",
                 parse_mode="HTML"
@@ -157,7 +157,7 @@ async def back_to_main_menu(callback_query: types.CallbackQuery, state: FSMConte
     await state.clear()
     
     await callback_query.message.answer(
-        "<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+        "<b>📍 Дружба корпус 1 второй этаж</b>\n\n"
         "Вы вернулись в главное меню", 
         reply_markup=main_menu,
         parse_mode="HTML"

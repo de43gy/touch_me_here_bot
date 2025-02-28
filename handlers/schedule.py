@@ -103,7 +103,7 @@ async def show_schedule(message: types.Message):
     try:
         now = get_current_moscow_time()
         
-        schedule_message = "<b>📍 Салют 1 корпус 3 этаж</b>\n\n"
+        schedule_message = "<b>📍 Дружба корпус 1 второй этаж</b>\n\n"
         schedule_message += "📅 <b>Расписание кемпа «Трогай тут»</b>\n\n"
         has_future_events = False
         
